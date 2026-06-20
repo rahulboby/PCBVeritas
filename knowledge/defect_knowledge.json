@@ -1,0 +1,401 @@
+{
+  "version": "1.0",
+  "description": "PCB Defect Knowledge Base for Industrial Inspection",
+  "last_updated": "2024-01-01",
+  "defects": {
+    "missing_hole": {
+      "name": "Missing Hole",
+      "code": "MH",
+      "severity": "high",
+      "category": "mechanical",
+      "description": "A through-hole or via that was not drilled or was incompletely drilled in the PCB substrate. The hole is absent where it should exist according to the design specification.",
+      "visual_characteristics": [
+        "Absence of circular void where via or through-hole should exist",
+        "Solid copper pad without central drilling",
+        "Visible laminate material without perforation",
+        "May show partial drilling marks"
+      ],
+      "causes": [
+        "Drill bit breakage during drilling operation",
+        "CNC drilling machine misalignment or calibration error",
+        "Incorrect drilling program or wrong coordinate file",
+        "Drill bit wear resulting in incomplete penetration",
+        "Stack height issues causing incomplete drill-through",
+        "Chip loading in flutes preventing cutting action",
+        "Vibration during drilling causing bit deflection"
+      ],
+      "manufacturing_process": {
+        "stage": "Mechanical Drilling",
+        "process_description": "PCB drilling is performed on CNC drilling machines using carbide drill bits. The drill program (.drl file) specifies the exact X,Y coordinates and drill sizes for all holes. Missing holes typically indicate a process failure at this stage.",
+        "contributing_factors": [
+          "Tool life management failures",
+          "Machine maintenance issues",
+          "Programming errors in CAM output",
+          "Material inconsistencies affecting drill penetration"
+        ]
+      },
+      "potential_risks": [
+        "Open circuit - no electrical connection through the via",
+        "Component mounting failure for through-hole components",
+        "Assembly rejection at component insertion stage",
+        "Signal integrity issues in multi-layer boards",
+        "Thermal via function loss leading to heat management problems"
+      ],
+      "severity_rationale": "High severity because missing vias break electrical continuity, leading to non-functional circuits. Through-holes for component leads make assembly impossible.",
+      "inspection_procedure": [
+        "Verify against drill drawing or Gerber file",
+        "Check drill file completeness",
+        "Inspect drill bit status and change records",
+        "Review CNC machine maintenance logs",
+        "Use AOI (Automated Optical Inspection) cross-reference",
+        "Perform electrical continuity test across the via"
+      ],
+      "repair_recommendations": [
+        "Re-drill the missing hole if board allows rework",
+        "Verify drill program and re-run affected panels if systematic",
+        "Inspect and replace worn drill bits",
+        "Recalibrate CNC drilling machine",
+        "Check drill stack configuration and entry/backup materials",
+        "Implement drill breakage detection system"
+      ],
+      "ipc_standard": "IPC-6012D Class 2/3",
+      "common_in_layer_types": ["inner", "outer", "through-hole"],
+      "detection_difficulty": "medium"
+    },
+    "mouse_bite": {
+      "name": "Mouse Bite",
+      "code": "MB",
+      "severity": "medium",
+      "category": "mechanical",
+      "description": "Small, irregular notches or indentations along the edge of a PCB conductor (trace or pad), resembling the nibbling pattern of a mouse. These are semi-circular or irregular voids in the conductor material.",
+      "visual_characteristics": [
+        "Irregular semi-circular notches on conductor edges",
+        "Rough, jagged conductor edge appearance",
+        "Clusters of small voids along trace periphery",
+        "Reduced conductor cross-section area"
+      ],
+      "causes": [
+        "Chemical over-etching of copper conductor",
+        "Inadequate etch resist adhesion before etching",
+        "Contamination on copper surface preventing proper resist adhesion",
+        "Etchant concentration imbalance (too aggressive)",
+        "Excessive etch time or temperature",
+        "Mechanical handling damage to soft copper",
+        "Resist film lifting during etching process",
+        "Poor resist exposure causing weak edges"
+      ],
+      "manufacturing_process": {
+        "stage": "Photolithography and Etching",
+        "process_description": "During PCB fabrication, copper layers are selectively removed by chemical etching. A photoresist is applied, exposed to UV through a photomask (Gerber pattern), then developed to expose copper for etching. Mouse bites form when the resist does not fully protect the copper edge, allowing lateral chemical attack.",
+        "contributing_factors": [
+          "UV exposure energy calibration",
+          "Photoresist quality and shelf life",
+          "Developing chemistry concentration",
+          "Etchant chemistry control (CuCl2 or FeCl3)",
+          "Conveyorized etching speed and spray pressure"
+        ]
+      },
+      "potential_risks": [
+        "Reduced current-carrying capacity of affected trace",
+        "Increased resistance and potential voltage drop",
+        "Open circuit failure under thermal stress",
+        "Mechanical weakness at the notch stress concentration point",
+        "Reliability reduction in high-vibration environments"
+      ],
+      "severity_rationale": "Medium severity because mouse bites reduce conductor cross-section. Minor ones may pass functional testing but fail reliability tests. Severe mouse bites can cause immediate open circuits.",
+      "inspection_procedure": [
+        "Measure remaining conductor width at narrowest point",
+        "Compare against IPC minimum conductor width specification",
+        "Check etch resist adhesion quality on test coupons",
+        "Review etchant concentration and temperature logs",
+        "Inspect photoresist application process",
+        "Measure etch factor using cross-section analysis"
+      ],
+      "repair_recommendations": [
+        "Minor mouse bites: apply solder mask or conformal coating if within IPC tolerance",
+        "Severe cases: board rejection or rework with copper epoxy on non-critical traces",
+        "Process correction: adjust etchant concentration and dwell time",
+        "Improve resist adhesion through surface preparation optimization",
+        "Calibrate UV exposure unit",
+        "Implement SPC (Statistical Process Control) on etch parameters"
+      ],
+      "ipc_standard": "IPC-A-600 Class 2/3",
+      "common_in_layer_types": ["outer"],
+      "detection_difficulty": "medium"
+    },
+    "open_circuit": {
+      "name": "Open Circuit",
+      "code": "OC",
+      "severity": "critical",
+      "category": "electrical",
+      "description": "A complete break in an electrical conductor (trace, via, or pad) that creates an unintended interruption in the current path. The circuit is physically severed, preventing any electrical signal or power from flowing through the intended path.",
+      "visual_characteristics": [
+        "Complete break or gap in copper trace",
+        "Visible substrate (FR4 or similar) through broken conductor",
+        "Sharp or irregular edges at break points",
+        "Missing copper section within a trace route",
+        "Severed via connection"
+      ],
+      "causes": [
+        "Over-etching removing entire trace sections",
+        "Mechanical damage during handling or assembly",
+        "Scratching of copper before lamination",
+        "Drill breakout damaging adjacent traces",
+        "Thermal stress causing trace cracking (especially at vias)",
+        "Incorrect Gerber file data causing missing trace segments",
+        "Solder bridging removal that took trace with it",
+        "Delamination separating trace from substrate"
+      ],
+      "manufacturing_process": {
+        "stage": "Multiple stages - most commonly Etching or Drilling",
+        "process_description": "Open circuits can originate at multiple manufacturing stages. During etching, excessive chemical attack removes entire conductor sections. During drilling, off-location holes can intersect and sever adjacent traces. During handling, mechanical scratches or breaks can sever thin conductors.",
+        "contributing_factors": [
+          "Etchant process control failures",
+          "CNC drill registration accuracy",
+          "Material handling protocols",
+          "Design Rule Check (DRC) violations in layout",
+          "Copper weight specification vs. actual"
+        ]
+      },
+      "potential_risks": [
+        "Complete circuit non-functionality",
+        "No power delivery to downstream components",
+        "Signal path interruption causing system failure",
+        "Potential arcing or spark generation in high-voltage circuits",
+        "Hidden failure mode that passes visual but fails electrical test"
+      ],
+      "severity_rationale": "Critical severity. Open circuits result in non-functional boards. No component or software workaround can compensate for a physical break in the conductor. 100% electrical test rejection.",
+      "inspection_procedure": [
+        "Automated Optical Inspection (AOI) comparison to Gerber reference",
+        "Flying probe electrical test for continuity",
+        "In-Circuit Test (ICT) if board is assembled",
+        "High-resolution microscopy at suspected break points",
+        "Cross-section analysis to identify failure mode",
+        "Netlist verification against CAD database"
+      ],
+      "repair_recommendations": [
+        "Bare board stage: conductive epoxy jumper wire repair if acceptable",
+        "Verify all adjacent nets for additional damage",
+        "Root cause: review etch process parameters immediately",
+        "Check drill file registration accuracy",
+        "Implement mandatory post-etch AOI on all panels",
+        "Review minimum trace width design rules vs. manufacturing capability",
+        "Consider increasing copper weight for thin critical traces"
+      ],
+      "ipc_standard": "IPC-6012D - Reject condition for all classes",
+      "common_in_layer_types": ["outer", "inner"],
+      "detection_difficulty": "low"
+    },
+    "short": {
+      "name": "Short Circuit",
+      "code": "SC",
+      "severity": "critical",
+      "category": "electrical",
+      "description": "An unintended low-resistance electrical connection between two conductors that should be electrically isolated. This creates a path for current to flow where none should exist, potentially causing component damage, excessive heating, or board destruction.",
+      "visual_characteristics": [
+        "Copper bridge connecting two separate trace networks",
+        "Thin metallic filament between adjacent pads or traces",
+        "Copper splash or solder blob bridging conductors",
+        "Whisker growth between conductors",
+        "Incomplete isolation gap between traces"
+      ],
+      "causes": [
+        "Insufficient etching leaving copper residue between traces",
+        "Copper slivers from drilling redepositing on surface",
+        "Tin whisker growth in plated through-holes",
+        "Solder bridges during assembly wave or reflow soldering",
+        "Conductive contamination (ionic, metallic particles)",
+        "Design rule violation - trace spacing too small for process capability",
+        "Etchant exhaustion causing underetching",
+        "Inadequate conveyorized etcher spray pattern"
+      ],
+      "manufacturing_process": {
+        "stage": "Etching (bare board) or Soldering (assembly)",
+        "process_description": "At the bare board stage, shorts form when chemical etching fails to fully remove copper between conductors. The etchant must penetrate into narrow gaps to achieve complete isolation. As trace pitch decreases (finer features), shorts become increasingly likely if etch chemistry is not precisely controlled. At assembly, solder shorts form during reflow or wave soldering when solder bridges across closely-spaced pads.",
+        "contributing_factors": [
+          "Etchant concentration and refresh rate",
+          "Conveyor speed through etchant",
+          "Feature size vs. process capability",
+          "Copper surface contamination",
+          "Solder paste volume control in SMT assembly",
+          "Reflow profile optimization"
+        ]
+      },
+      "potential_risks": [
+        "Immediate component destruction from overcurrent",
+        "PCB fire or thermal runaway in power circuits",
+        "System-level failure masking root cause",
+        "Latent damage to otherwise undamaged components",
+        "ESD damage to sensitive components from unexpected current paths"
+      ],
+      "severity_rationale": "Critical severity. Short circuits can immediately destroy ICs, burn traces, and in power circuits represent a fire hazard. Always results in board rejection without rework.",
+      "inspection_procedure": [
+        "AOI comparison to Gerber netlist",
+        "Flying probe isolation resistance measurement",
+        "4-wire resistance measurement between adjacent nets",
+        "SEM (Scanning Electron Microscopy) for whisker detection",
+        "Cross-section to identify short type (copper, solder, contamination)",
+        "Ion Chromatography for ionic contamination analysis"
+      ],
+      "repair_recommendations": [
+        "Bare board: reject - shorts cannot be reliably reworked",
+        "Identify whether systematic (process) or random (handling) failure",
+        "Review copper weight and etch factor for feature density",
+        "Adjust etch chemistry: reduce CuCl2 concentration or increase HCl",
+        "Increase conveyor speed or spray pressure for better gap penetration",
+        "Verify minimum isolation spacing meets process capability (6-sigma)",
+        "Implement post-etch electrical test (E-test) before lamination"
+      ],
+      "ipc_standard": "IPC-6012D - Reject condition for all classes",
+      "common_in_layer_types": ["outer", "inner"],
+      "detection_difficulty": "low"
+    },
+    "spur": {
+      "name": "Spur",
+      "code": "SP",
+      "severity": "low",
+      "category": "mechanical",
+      "description": "A small, unintended protrusion or spike of copper extending from the edge of a conductor trace or pad. Spurs are excess copper that should have been removed during etching but was protected by resist overhang or contamination.",
+      "visual_characteristics": [
+        "Small spike or protrusion extending from conductor edge",
+        "Pointed or irregular copper extension",
+        "May point toward adjacent conductors",
+        "Localized at trace edges or pad periphery",
+        "Typically smaller than the main conductor width"
+      ],
+      "causes": [
+        "Photoresist contamination causing localized over-exposure",
+        "Dust or particles on photomask protecting small copper areas",
+        "Artwork defects in Gerber film",
+        "Electrostatic attraction of particles during resist lamination",
+        "Etchant shadowing in complex geometries",
+        "Partial resist delamination leaving copper bridges"
+      ],
+      "manufacturing_process": {
+        "stage": "Photolithography - resist exposure and development",
+        "process_description": "During UV exposure, particles on the photomask or resist surface cast shadows, preventing UV from reaching the resist beneath. These shielded areas fail to cross-link properly, and during development, the unexposed resist remains. During etching, the copper beneath this remaining resist is protected, creating a spur.",
+        "contributing_factors": [
+          "Cleanroom cleanliness level (particle count)",
+          "Photomask cleanliness and inspection frequency",
+          "Resist lamination static charge management",
+          "UV source intensity uniformity",
+          "Contact vs. proximity printing method"
+        ]
+      },
+      "potential_risks": [
+        "Potential short circuit if spur touches adjacent conductor",
+        "Reduced isolation distance between conductors",
+        "Electric field concentration causing premature insulation breakdown",
+        "Tin whisker nucleation point in harsh environments"
+      ],
+      "severity_rationale": "Low severity when isolated from adjacent conductors. Spurs become high severity if they reduce isolation spacing below minimum requirements or approach adjacent conductors.",
+      "inspection_procedure": [
+        "Measure distance from spur tip to nearest adjacent conductor",
+        "Compare spur geometry to IPC isolation requirements",
+        "AOI detection with appropriate tolerance windows",
+        "Inspect photomask for contamination under magnification",
+        "Review environmental controls logs (particle count, humidity)"
+      ],
+      "repair_recommendations": [
+        "Isolated spurs: mechanical removal with fine scalpel if accessible",
+        "Spurs near isolation limits: apply non-conductive solder mask",
+        "Process fix: improve cleanroom protocols for photomask handling",
+        "Increase photomask inspection frequency",
+        "Implement ionizing air blowers to reduce static in lamination area",
+        "Consider automated photomask cleaning system"
+      ],
+      "ipc_standard": "IPC-A-600 - Acceptable if isolation maintained",
+      "common_in_layer_types": ["outer"],
+      "detection_difficulty": "high"
+    },
+    "spurious_copper": {
+      "name": "Spurious Copper",
+      "code": "SCu",
+      "severity": "medium",
+      "category": "contamination",
+      "description": "Unintended copper deposits or residues remaining on the PCB surface in areas that should be free of copper (non-conductor regions). Unlike shorts, spurious copper may not immediately bridge two conductors but represents excess copper that violates the design specification.",
+      "visual_characteristics": [
+        "Copper-colored deposits in non-conductor areas",
+        "Islands or patches of copper in clearance zones",
+        "Irregular copper shapes not matching any design feature",
+        "Copper film or haze in areas that should be bare laminate",
+        "May appear as discoloration or metallic sheen in cleared areas"
+      ],
+      "causes": [
+        "Incomplete etching of copper in clearance areas",
+        "Copper redeposition from etchant solution onto board surface",
+        "Micro-crack in resist allowing copper plating in unwanted areas",
+        "Edge plating overspray during through-hole copper plating",
+        "Electrochemical copper migration from adjacent plated areas",
+        "Contamination of bare laminate with copper particles",
+        "Galvanic copper deposition from chemical process bath"
+      ],
+      "manufacturing_process": {
+        "stage": "Etching or Electroplating",
+        "process_description": "Spurious copper forms when either (1) the etching process fails to completely remove copper from clearance areas, leaving thin copper films, or (2) electrochemical processes deposit copper where it shouldn't be. The former is most common and relates to etchant chemistry and dwell time. Thin copper films are particularly problematic as they may be invisible until electrical testing.",
+        "contributing_factors": [
+          "Etchant refresh rate and copper loading",
+          "Conveyor speed consistency",
+          "Etchant temperature uniformity across panel",
+          "Panel edge effects in spray etching",
+          "Plating bath contamination",
+          "Copper roughness of base laminate"
+        ]
+      },
+      "potential_risks": [
+        "Progressive oxidation leading to corrosive contamination",
+        "Risk of eventual bridging under vibration or thermal cycling",
+        "Reduced high-voltage isolation capability",
+        "Impedance variation in controlled impedance designs",
+        "Antenna effect causing EMI in high-frequency applications"
+      ],
+      "severity_rationale": "Medium severity. Spurious copper does not immediately cause failure but compromises board reliability and electrical isolation. Risk increases with operating voltage and environmental severity.",
+      "inspection_procedure": [
+        "AOI comparison against design artwork",
+        "High-voltage isolation test (Hi-Pot testing)",
+        "SEM-EDX analysis to confirm copper composition",
+        "Etchant chemistry analysis and refresh rate review",
+        "Panel sampling at etch process start and end",
+        "Measure copper residue thickness using XRF"
+      ],
+      "repair_recommendations": [
+        "Minor residues: chemical micro-etch to remove copper islands",
+        "Confirm re-test after repair passes isolation specs",
+        "Process correction: extend etch dwell time or increase temperature",
+        "Increase etchant refresh rate to reduce copper loading",
+        "Add post-etch rinse and inspect station with lighting optimization",
+        "Consider plasma etch treatment for sub-micron residue removal"
+      ],
+      "ipc_standard": "IPC-6012D Class 2/3 - Review vs. isolation requirement",
+      "common_in_layer_types": ["outer", "inner"],
+      "detection_difficulty": "high"
+    }
+  },
+  "severity_levels": {
+    "critical": {
+      "description": "Immediate functional failure. Board must be rejected.",
+      "action": "100% rejection. Mandatory process hold and investigation.",
+      "color_code": "#FF0000"
+    },
+    "high": {
+      "description": "High probability of functional failure. Rework evaluation required.",
+      "action": "Engineering review required. Rework or reject decision.",
+      "color_code": "#FF8800"
+    },
+    "medium": {
+      "description": "Potential reliability concern. May pass initial test but fail in field.",
+      "action": "Disposition review. Risk-based accept/reject decision.",
+      "color_code": "#FFCC00"
+    },
+    "low": {
+      "description": "Cosmetic or minor concern. Unlikely to cause immediate failure.",
+      "action": "Document and monitor. Accept with notation if within IPC limits.",
+      "color_code": "#44FF44"
+    }
+  },
+  "defect_interactions": {
+    "open_circuit_short": "Combinations of open and short defects suggest systematic etching failure",
+    "mouse_bite_spur": "Co-occurrence suggests resist adhesion issues in photolithography",
+    "missing_hole_open_circuit": "Via-related defects may indicate drilling and plating process failures"
+  }
+}

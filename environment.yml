@@ -1,0 +1,64 @@
+name: pcb-vlm-xai
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10.14
+  - pip=24.0
+  - setuptools>=68.2.2
+  - wheel>=0.42.0
+  - cudatoolkit=11.8
+  - cuda-toolkit=11.8
+
+  # Core ML
+  - pytorch::pytorch=2.2.2
+  - pytorch::torchvision=0.17.2
+  - pytorch::torchaudio=2.2.2
+  - pytorch::pytorch-cuda=11.8
+
+  # Scientific Computing
+  - numpy=1.26.4
+  - pandas=2.2.2
+  - scipy=1.13.0
+  - scikit-learn=1.4.2
+  - matplotlib=3.8.4
+  - seaborn=0.13.2
+
+  # Image Processing
+  - conda-forge::opencv=4.9.0
+  - conda-forge::pillow=10.3.0
+
+  # Dev Tools
+  - conda-forge::jupyterlab=4.2.0
+  - conda-forge::ipywidgets=8.1.2
+  - conda-forge::pyyaml=6.0.1
+  - conda-forge::tqdm=4.66.4
+
+  # Pip packages (not on conda)
+  - pip:
+    - ultralytics==8.2.18
+    - grad-cam==1.5.0
+    - transformers==4.40.2
+    - tokenizers==0.19.1
+    - sentencepiece==0.2.0
+    - accelerate==0.30.0
+    - safetensors==0.4.3
+    - peft==0.11.1
+    - faiss-gpu==1.7.4
+    - albumentations==1.4.6
+    - streamlit==1.33.0
+    - plotly==5.22.0
+    - loguru==0.7.2
+    - rich==13.7.1
+    - click==8.1.7
+    - python-dotenv==1.0.1
+    - mlflow==2.13.0
+    - reportlab==4.2.0
+    - fpdf2==2.7.9
+    - jinja2==3.1.4
+    - pytest==8.2.0
+    - pytest-cov==5.0.0
+    - streamlit-image-coordinates==0.1.6

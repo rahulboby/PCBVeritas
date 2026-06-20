@@ -1,0 +1,54 @@
+# Python environments and caches
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local agent/editor metadata
+.agents/
+.codex/
+.vscode/
+.idea/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Dataset and generated artifacts
+data/
+logs/
+outputs/
+models/
+runs/
+mlruns/
+wandb/
+
+# Model/export/checkpoint files
+*.pt
+*.pth
+*.onnx
+*.engine
+*.safetensors
+*.ckpt
+*.bin
+
+# Project notes/manuals not intended for Git
+INSTRUCTION.md
+INSTRUCTIONS.md
+PROJECT_MAP.md
+docs/
+
+# Notebook and OS noise
+.ipynb_checkpoints/
+Thumbs.db
+Desktop.ini
+.DS_Store

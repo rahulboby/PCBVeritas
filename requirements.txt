@@ -1,0 +1,77 @@
+# ============================================================
+# PCB-VLM-XAI: Requirements
+# Designed for RTX 4050 Laptop GPU (6GB VRAM), 24GB RAM
+# Python 3.10-3.12
+# ============================================================
+
+# --- Packaging Bootstrap ---
+# Python 3.12 removed pkgutil.ImpImporter. Older setuptools releases can crash
+# when packages import pkg_resources, so keep setuptools above that fix.
+setuptools>=68.2.2
+wheel>=0.42.0
+
+# --- Core Deep Learning ---
+# PyTorch packages are installed separately because the wheel names differ
+# by platform and CUDA/CPU build variant.
+# Example for CUDA 11.8:
+#   python -m pip install torch==2.2.2+cu118 torchvision==0.17.2+cu118 torchaudio==2.2.2+cu118 \
+#     --index-url https://download.pytorch.org/whl/cu118
+# For CPU-only systems, use the matching +cpu packages instead.
+
+# --- Object Detection ---
+ultralytics==8.2.18          # YOLOv8 (NOT YOLOv11)
+
+# --- Explainable AI ---
+grad-cam==1.5.0              # Grad-CAM and EigenCAM
+
+# --- Vision-Language Embeddings ---
+transformers==4.40.2         # HuggingFace Transformers (SigLIP + Qwen)
+tokenizers==0.19.1
+sentencepiece==0.2.0
+accelerate==0.30.0
+safetensors==0.4.3
+
+# --- LoRA Fine-Tuning ---
+peft==0.11.1                 # Parameter-Efficient Fine-Tuning
+
+# --- Vector Search ---
+faiss-cpu==1.8.0             # FAISS CPU version for Windows and general compatibility
+# For Linux with GPU support, install faiss-gpu manually if desired
+# python -m pip install faiss-gpu==1.7.4
+# --- Data Science ---
+numpy==1.26.4
+pandas==2.2.2
+scipy==1.13.0
+scikit-learn==1.4.2
+
+# --- Image Processing ---
+opencv-python==4.9.0.80
+Pillow==10.3.0
+albumentations==1.4.6
+matplotlib==3.8.4
+seaborn==0.13.2
+
+# --- Streamlit App ---
+streamlit==1.33.0
+streamlit-image-coordinates==0.1.6
+plotly==5.22.0
+
+# --- Utilities ---
+pyyaml==6.0.1
+tqdm==4.66.4
+loguru==0.7.2
+rich==13.7.1
+click==8.1.7
+python-dotenv==1.0.1
+
+# --- Experiment Tracking ---
+mlflow==2.13.0
+
+# --- Testing ---
+pytest==8.2.0
+pytest-cov==5.0.0
+
+# --- Optional: Notebook Support (development only) ---
+# Uncomment if you want to use Jupyter notebooks
+# jupyterlab==4.2.0
+# ipywidgets==8.1.2

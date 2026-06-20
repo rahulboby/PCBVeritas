@@ -1,0 +1,36 @@
+# ============================================================
+# XAI Configuration - Grad-CAM and EigenCAM
+# ============================================================
+
+grad_cam:
+  # Target layer in YOLOv8 for Grad-CAM
+  # model.model[-2] = second-to-last layer (SPPF or C2f block)
+  target_layer_name: model.model[-2]
+  method: GradCAM                  # GradCAM, GradCAMPlusPlus, EigenCAM
+  use_cuda: true
+
+eigen_cam:
+  target_layer_name: model.model[-2]
+  method: EigenCAM
+
+visualization:
+  colormap: COLORMAP_JET           # OpenCV colormap for heatmap
+  alpha: 0.5                       # Heatmap blend ratio (0=image, 1=heatmap)
+  normalize: true                  # Normalize heatmap values to [0,1]
+
+output:
+  heatmaps_dir: outputs/heatmaps
+  save_raw_heatmap: true           # Save the raw numpy heatmap
+  save_overlay: true               # Save the blended overlay image
+  save_comparison: true            # Save side-by-side original vs overlay
+  dpi: 150                         # DPI for saved figures
+
+per_class_cam:
+  enabled: true                    # Generate class-specific CAMs
+  classes:
+    - missing_hole
+    - mouse_bite
+    - open_circuit
+    - short
+    - spur
+    - spurious_copper

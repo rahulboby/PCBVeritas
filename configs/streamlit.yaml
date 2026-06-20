@@ -1,0 +1,51 @@
+# ============================================================
+# Streamlit Application Configuration
+# ============================================================
+
+app:
+  title: "PCB-VLM-XAI: Intelligent PCB Inspection System"
+  subtitle: "Explainable Vision-Language Defect Analysis"
+  icon: "🔬"
+  layout: wide
+  theme: dark
+
+upload:
+  max_file_size_mb: 50
+  allowed_formats:
+    - jpg
+    - jpeg
+    - png
+    - bmp
+    - tiff
+
+pages:
+  - name: "Upload & Detect"
+    icon: "📷"
+  - name: "XAI Visualizations"
+    icon: "🔍"
+  - name: "Similar Defects"
+    icon: "🔎"
+  - name: "Knowledge Insights"
+    icon: "📚"
+  - name: "Inspection Report"
+    icon: "📋"
+
+display:
+  thumbnail_size: [200, 200]
+  gallery_columns: 3
+  confidence_bar_color: "#00ff88"
+  critical_color: "#ff4444"
+  high_color: "#ff8800"
+  medium_color: "#ffcc00"
+  low_color: "#44ff44"
+
+models:
+  detector_weights: models/detector/best.pt
+  embedding_index: data/embeddings/faiss_index.bin
+  embedding_metadata: data/embeddings/metadata.json
+  llm_dir: models/llm/fine_tuned_qwen
+  siglip_dir: models/embeddings/siglip
+
+cache:
+  enabled: true
+  ttl_seconds: 3600
