@@ -371,7 +371,7 @@ def run_validation(data_dir: str) -> dict[str, Any]:
     # --- Save report ---
     report_path = Path("logs/dataset_validation.json")
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(report_path, "w") as f:
+    with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
     console.print(f"\nValidation report saved to: {report_path}")
 

@@ -163,7 +163,7 @@ class PCBDefectDetector:
     def _load_config(self, config_path: str) -> dict:
         """Load YAML configuration with graceful fallback."""
         try:
-            with open(config_path) as f:
+            with open(config_path, encoding="utf-8") as f:
                 return yaml.safe_load(f)
         except FileNotFoundError:
             logger.warning(f"Config not found at {config_path}. Using defaults.")

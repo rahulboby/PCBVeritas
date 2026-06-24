@@ -1,0 +1,8 @@
+embedding:
+  embedding_dim: 768
+faiss:
+  index_path: C:\Users\rahul\Projects\PCBVeritas - PCB Defect Detection YOLOV8\PCBVeritas\tmp\test_is_loaded_false_before_lo0\idx.bin
+  metadata_path: C:\Users\rahul\Projects\PCBVeritas - PCB Defect Detection YOLOV8\PCBVeritas\tmp\test_is_loaded_false_before_lo0\meta.json
+retrieval:
+  min_similarity: 0.0
+  top_k: 3

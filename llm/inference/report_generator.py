@@ -91,7 +91,7 @@ class PCBReportGenerator:
 
     def _load_config(self, path: str) -> dict:
         try:
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 return yaml.safe_load(f)
         except FileNotFoundError:
             logger.warning(f"Config not found: {path}")

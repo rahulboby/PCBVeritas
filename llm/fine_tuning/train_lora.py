@@ -78,7 +78,7 @@ console = Console()
 
 def load_config(config_path: str) -> dict:
     """Load fine-tuning configuration."""
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -341,7 +341,7 @@ def load_instruction_dataset(
             "Generate it first: python llm/fine_tuning/generate_dataset.py"
         )
 
-    with open(data_file) as f:
+    with open(data_file, encoding="utf-8") as f:
         raw_data = json.load(f)
 
     logger.info(f"Loaded {len(raw_data)} instruction samples from {data_file}")
@@ -422,7 +422,7 @@ def train_lora(config_path: str = "configs/fine_tuning.yaml") -> None:
 
     # --- Load Dataset ---
     system_prompt = yaml.safe_load(
-        open("configs/llm.yaml")
+        open("configs/llm.yaml", encoding="utf-8")
     ).get("system_prompt", "You are a PCB inspection expert.")
 
     train_dataset, eval_dataset = load_instruction_dataset(

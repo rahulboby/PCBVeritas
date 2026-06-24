@@ -1,0 +1,11 @@
+embedding:
+  device: cpu
+  embedding_dim: 768
+  normalize: true
+faiss:
+  index_path: C:\Users\rahul\Projects\PCBVeritas - PCB Defect Detection YOLOV8\PCBVeritas\tmp\test_search_returns_results0\faiss_index.bin
+  index_type: IndexFlatIP
+  metadata_path: C:\Users\rahul\Projects\PCBVeritas - PCB Defect Detection YOLOV8\PCBVeritas\tmp\test_search_returns_results0\metadata.json
+retrieval:
+  min_similarity: 0.0
+  top_k: 3

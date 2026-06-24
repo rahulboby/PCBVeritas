@@ -177,7 +177,7 @@ class PCBGradCAM:
         """Load XAI configuration."""
         import yaml
         try:
-            with open(config_path) as f:
+            with open(config_path, encoding="utf-8") as f:
                 return yaml.safe_load(f)
         except FileNotFoundError:
             logger.warning(f"XAI config not found at {config_path}. Using defaults.")

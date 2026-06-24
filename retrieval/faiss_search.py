@@ -125,7 +125,7 @@ class FAISSSearchEngine:
 
     def _load_config(self, config_path: str) -> dict:
         try:
-            with open(config_path) as f:
+            with open(config_path, encoding="utf-8") as f:
                 return yaml.safe_load(f)
         except FileNotFoundError:
             logger.warning(f"Config not found: {config_path}. Using defaults.")
@@ -156,7 +156,7 @@ class FAISSSearchEngine:
         self.index = faiss.read_index(str(self.index_path))
 
         logger.info(f"Loading metadata from: {self.metadata_path}")
-        with open(self.metadata_path) as f:
+        with open(self.metadata_path, encoding="utf-8") as f:
             self.metadata = json.load(f)
 
         logger.info(

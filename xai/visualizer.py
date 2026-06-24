@@ -53,7 +53,7 @@ class XAIVisualizer:
     def __init__(self, config_path: str = "configs/xai.yaml") -> None:
         import yaml
         try:
-            with open(config_path) as f:
+            with open(config_path, encoding="utf-8") as f:
                 self.config = yaml.safe_load(f)
         except FileNotFoundError:
             self.config = {}

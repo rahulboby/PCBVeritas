@@ -126,7 +126,7 @@ class SigLIPEmbedder:
 
     def _load_config(self, config_path: str) -> dict:
         try:
-            with open(config_path) as f:
+            with open(config_path, encoding="utf-8") as f:
                 return yaml.safe_load(f)
         except FileNotFoundError:
             logger.warning(f"Config not found: {config_path}. Using defaults.")

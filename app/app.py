@@ -7,8 +7,8 @@ PURPOSE:
     knowledge base, and inspection report pages.
 
 USAGE:
-    streamlit run app/main.py
-    streamlit run app/main.py --server.port 8501 --server.maxUploadSize 50
+    streamlit run app/app.py
+    streamlit run app/app.py --server.port 8501 --server.maxUploadSize 50
 """
 
 import sys
@@ -42,7 +42,7 @@ st.set_page_config(
 def load_app_config():
     config_path = PROJECT_ROOT / "configs" / "streamlit.yaml"
     try:
-        with open(config_path) as f:
+        with open(config_path, encoding='utf-8') as f:
             return yaml.safe_load(f)
     except FileNotFoundError:
         return {}

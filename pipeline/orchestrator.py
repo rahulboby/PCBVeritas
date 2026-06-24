@@ -13,11 +13,11 @@ PIPELINE DIAGRAM:
         │
         ▼
     YOLOv8s Detection ──────────────────────────────────────────────────────┐
-        │                                                                    │
-        ├─ Bounding Boxes                                                    │
-        ├─ Class Labels                                                      │
-        └─ Confidence Scores                                                 │
-        │                                                                    │
+        │                                                                   │
+        ├─ Bounding Boxes                                                   │
+        ├─ Class Labels                                                     │
+        └─ Confidence Scores                                                │
+        │                                                                   │
         ├──────────────────────────┐                                        │
         ▼                          ▼                                        ▼
     Grad-CAM/EigenCAM         SigLIP Embedder                        Detection viz

@@ -57,6 +57,73 @@ except ImportError:
     logger.warning("MLflow not available. Training metrics won't be tracked.")
 
 
+def _refresh_dataset_yaml_path(dataset_yaml: Path) -> None:
+    """
+    Keep Ultralytics dataset.yaml usable after the project folder is renamed.
+
+    prepare_dataset.py writes an absolute `path`. That is valid when generated,
+    but it becomes stale if the project directory is moved or renamed.
+    """
+    with open(dataset_yaml, encoding="utf-8") as f:
+        dataset_config = yaml.safe_load(f) or {}
+
+    current_root = dataset_yaml.parent.resolve()
+    configured_root = Path(dataset_config.get("path", current_root))
+
+    split_dirs = [
+        current_root / dataset_config.get("train", "train/images"),
+        current_root / dataset_config.get("val", "val/images"),
+        current_root / dataset_config.get("test", "test/images"),
+    ]
+
+    if configured_root.resolve() == current_root:
+        return
+
+    if not all(path.exists() for path in split_dirs):
+        return
+
+    logger.warning(
+        f"Dataset YAML path points to {configured_root}, "
+        f"updating it to current split folder: {current_root}"
+    )
+    dataset_config["path"] = str(current_root)
+    with open(dataset_yaml, "w", encoding="utf-8") as f:
+        yaml.safe_dump(dataset_config, f, default_flow_style=False, sort_keys=False)
+
+
+def _disable_ultralytics_mlflow_callback() -> None:
+    """Disable Ultralytics' built-in MLflow callback to avoid duplicate runs."""
+    try:
+        from ultralytics.utils import SETTINGS
+        SETTINGS["mlflow"] = False
+        import ultralytics.utils.callbacks.mlflow as ultralytics_mlflow
+
+        ultralytics_mlflow.mlflow = None
+        ultralytics_mlflow.callbacks = {}
+        logger.info("Ultralytics MLflow callback disabled; using project MLflow tracking")
+    except Exception as exc:
+        logger.warning(f"Could not disable Ultralytics MLflow callback: {exc}")
+
+
+def _sanitize_mlflow_metric_name(name: str) -> str:
+    """Convert Ultralytics metric names to MLflow-safe keys."""
+    return name.replace("(", "_").replace(")", "")
+
+
+def _get_best_weights_path(model: YOLO, config: dict) -> Path:
+    """Return best.pt from the actual Ultralytics run directory."""
+    trainer = getattr(model, "trainer", None)
+    trainer_best = getattr(trainer, "best", None)
+    if trainer_best:
+        return Path(trainer_best)
+
+    trainer_save_dir = getattr(trainer, "save_dir", None)
+    if trainer_save_dir:
+        return Path(trainer_save_dir) / "weights" / "best.pt"
+
+    return Path(config["output"]["project"]) / config["output"]["name"] / "weights" / "best.pt"
+
+
 def train_detector(
     config_path: str = "configs/training.yaml",
     resume: bool = False,
@@ -75,7 +142,7 @@ def train_detector(
     """
     # --- Load configuration ---
     logger.info(f"Loading training config from: {config_path}")
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
     # --- Validate prerequisites ---
@@ -86,6 +153,7 @@ def train_detector(
             "Please run: python scripts/prepare_dataset.py"
         )
         raise FileNotFoundError(f"Dataset YAML not found: {dataset_yaml}")
+    _refresh_dataset_yaml_path(dataset_yaml)
 
     # --- GPU Memory Check ---
     if torch.cuda.is_available():
@@ -100,6 +168,8 @@ def train_detector(
             )
     else:
         logger.warning("No GPU detected. Training on CPU will be very slow!")
+
+    _disable_ultralytics_mlflow_callback()
 
     # --- Initialize MLflow tracking ---
     mlflow_enabled = config.get("mlflow", {}).get("enabled", False) and MLFLOW_AVAILABLE
@@ -205,17 +275,13 @@ def train_detector(
     results = model.train(**train_args)
 
     # --- Post-training: Copy best weights to models/ ---
-    best_weights_src = (
-        Path(config["output"]["project"])
-        / config["output"]["name"]
-        / "weights/best.pt"
-    )
+    best_weights_src = _get_best_weights_path(model, config)
     best_weights_dst = Path("models/detector/best.pt")
     best_weights_dst.parent.mkdir(parents=True, exist_ok=True)
 
     if best_weights_src.exists():
         shutil.copy2(best_weights_src, best_weights_dst)
-        logger.info(f"Best weights copied to: {best_weights_dst}")
+        logger.info(f"Best weights copied from {best_weights_src} to: {best_weights_dst}")
     else:
         logger.warning(f"Best weights not found at: {best_weights_src}")
 
@@ -229,10 +295,21 @@ def train_detector(
                 logger.info(f"  {k}: {v:.4f}")
 
     if mlflow_enabled:
-        mlflow.log_metrics(metrics_dict)
-        mlflow.log_artifact(str(best_weights_src))
-        mlflow.end_run()
-        logger.info("MLflow run completed")
+        safe_metrics = {
+            _sanitize_mlflow_metric_name(k): v
+            for k, v in metrics_dict.items()
+            if isinstance(v, (int, float))
+        }
+        try:
+            if safe_metrics:
+                mlflow.log_metrics(safe_metrics)
+            if best_weights_src.exists():
+                mlflow.log_artifact(str(best_weights_src))
+            logger.info("MLflow run completed")
+        except Exception as exc:
+            logger.warning(f"MLflow logging failed after training completed: {exc}")
+        finally:
+            mlflow.end_run()
 
     logger.info("=" * 50)
     logger.info("Training Complete!")
@@ -256,7 +333,7 @@ def validate_model(
     Returns:
         Validation metrics dict.
     """
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
     model = YOLO(weights_path)

@@ -1,6 +1,7 @@
 # Python environments and caches
 .venv/
 venv/
+.venv_clean/
 env/
 ENV/
 __pycache__/
@@ -52,3 +53,9 @@ docs/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+#Other miscellaneous files
+*.log
+*.tmp
+*.bak
+*.ini

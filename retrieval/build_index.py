@@ -105,7 +105,7 @@ def extract_crops_from_split(
         img_h, img_w = image.shape[:2]
 
         # Parse YOLO annotations
-        with open(label_path) as f:
+        with open(label_path, encoding="utf-8") as f:
             lines = [l.strip() for l in f.readlines() if l.strip()]
 
         for ann_idx, line in enumerate(lines):
@@ -248,7 +248,7 @@ def run_build_index(
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Load config
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
     padding = config.get("crops", {}).get("padding", 20)
@@ -267,7 +267,7 @@ def run_build_index(
 
         # Load existing metadata if available
         if metadata_path.exists():
-            with open(metadata_path) as f:
+            with open(metadata_path, encoding="utf-8") as f:
                 all_metadata = json.load(f)
             console.print(f"Loaded {len(all_metadata)} existing metadata records")
         else:
@@ -355,7 +355,7 @@ def run_build_index(
     faiss.write_index(faiss_index, str(index_path))
     console.print(f"[green]FAISS index saved: {index_path}[/green]")
 
-    with open(metadata_path, "w") as f:
+    with open(metadata_path, "w", encoding="utf-8") as f:
         json.dump(valid_metadata, f, indent=2)
     console.print(f"[green]Metadata saved: {metadata_path}[/green]")
 

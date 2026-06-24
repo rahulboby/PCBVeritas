@@ -221,7 +221,7 @@ def write_yolo_label(
         lines.append(f"{ann['class_id']} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}")
 
     label_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(label_path, "w") as f:
+    with open(label_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
 
@@ -404,7 +404,7 @@ def prepare_dataset(
     }
 
     yaml_path = out_path / "dataset.yaml"
-    with open(yaml_path, "w") as f:
+    with open(yaml_path, "w", encoding="utf-8") as f:
         yaml.dump(dataset_yaml, f, default_flow_style=False, sort_keys=False)
 
     # --- Save split metadata ---
@@ -414,7 +414,7 @@ def prepare_dataset(
         "class_mapping": CLASS_TO_ID,
         "stats": stats,
     }
-    with open(out_path / "split_metadata.json", "w") as f:
+    with open(out_path / "split_metadata.json", "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
 
     # --- Print summary ---

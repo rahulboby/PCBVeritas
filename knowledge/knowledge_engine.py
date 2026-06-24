@@ -61,7 +61,7 @@ class KnowledgeEngine:
                 f"Knowledge base not found at: {self.knowledge_path}\n"
                 "Please ensure knowledge/defect_knowledge.json exists."
             )
-        with open(self.knowledge_path, "r") as f:
+        with open(self.knowledge_path, "r", encoding="utf-8") as f:
             self.knowledge = json.load(f)
         
         # Validate structure

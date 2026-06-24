@@ -71,7 +71,7 @@ def load_yolo_labels(split_dir: Path) -> dict[str, Any]:
 
     for label_file in labels_dir.glob("*.txt"):
         defect_count = 0
-        with open(label_file) as f:
+        with open(label_file, encoding="utf-8") as f:
             for line in f:
                 parts = line.strip().split()
                 if len(parts) != 5:
@@ -315,7 +315,7 @@ def run_analysis(splits_dir: str = "data/splits") -> None:
             for split_name, data in all_stats.items()
         }
     }
-    with open(output_dir / "analysis_report.json", "w") as f:
+    with open(output_dir / "analysis_report.json", "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
 
     console.print(f"\n[bold green]Analysis complete! Outputs in: {output_dir}[/bold green]")
