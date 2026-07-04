@@ -224,7 +224,7 @@ def run_build_index(
     splits_dir: str = "data/splits",
     crops_dir: str = "data/processed/crops",
     output_dir: str = "data/embeddings",
-    config_path: str = "configs/retrieval.yaml",
+    config: Optional[dict] = None,
     splits: list[str] = None,
     force_rebuild: bool = False,
 ) -> None:
@@ -235,7 +235,7 @@ def run_build_index(
         splits_dir: Base directory for dataset splits.
         crops_dir: Where to save/find extracted crops.
         output_dir: Where to save FAISS index and metadata.
-        config_path: Retrieval configuration path.
+        config: Retrieval configuration dictionary.
         splits: Which splits to include (default: ['train']).
         force_rebuild: Rebuild even if crops already exist.
     """
@@ -248,8 +248,9 @@ def run_build_index(
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Load config
-    with open(config_path, encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    if config is None:
+        from configs.settings import RETRIEVAL_CONFIG
+        config = RETRIEVAL_CONFIG
 
     padding = config.get("crops", {}).get("padding", 20)
     min_size = config.get("crops", {}).get("min_size", 32)
@@ -387,11 +388,13 @@ if __name__ == "__main__":
     parser.add_argument("--force-rebuild", action="store_true")
     args = parser.parse_args()
 
+    from configs.settings import RETRIEVAL_CONFIG
+    
     run_build_index(
         splits_dir=args.splits_dir,
         crops_dir=args.crops_dir,
         output_dir=args.output_dir,
-        config_path=args.config,
+        config=RETRIEVAL_CONFIG,
         splits=args.splits,
         force_rebuild=args.force_rebuild,
     )

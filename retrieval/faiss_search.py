@@ -92,17 +92,17 @@ class FAISSSearchEngine:
             print(f"Similar: {r['label']} | Similarity: {r['similarity']:.2f}")
     """
 
-    def __init__(self, config_path: str = "configs/retrieval.yaml") -> None:
+    def __init__(self, config: Optional[dict] = None) -> None:
         """
         Initialize the search engine.
 
         Args:
-            config_path: Path to retrieval configuration.
+            config: Retrieval configuration dictionary.
         """
         if not FAISS_AVAILABLE:
             raise ImportError("FAISS is required. Install faiss-gpu or faiss-cpu.")
 
-        self.config = self._load_config(config_path)
+        self.config = config or {}
         faiss_cfg = self.config.get("faiss", {})
 
         self.index_path = Path(
@@ -122,14 +122,6 @@ class FAISSSearchEngine:
             f"FAISSSearchEngine initialized | "
             f"index={self.index_path.name} | top_k={self.top_k}"
         )
-
-    def _load_config(self, config_path: str) -> dict:
-        try:
-            with open(config_path, encoding="utf-8") as f:
-                return yaml.safe_load(f)
-        except FileNotFoundError:
-            logger.warning(f"Config not found: {config_path}. Using defaults.")
-            return {}
 
     def load(self) -> None:
         """

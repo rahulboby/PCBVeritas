@@ -26,6 +26,21 @@ from PIL import Image
 from loguru import logger
 
 # ============================================================
+# PyTorch 2.6 weights_only workaround
+# ============================================================
+import torch
+try:
+    import ultralytics
+except ImportError:
+    pass
+
+_original_load = torch.load
+def safe_load(*args, **kwargs):
+    kwargs['weights_only'] = False
+    return _original_load(*args, **kwargs)
+torch.load = safe_load
+
+# ============================================================
 # Page configuration (must be first Streamlit call)
 # ============================================================
 st.set_page_config(
@@ -40,12 +55,8 @@ st.set_page_config(
 # ============================================================
 @st.cache_resource
 def load_app_config():
-    config_path = PROJECT_ROOT / "configs" / "streamlit.yaml"
-    try:
-        with open(config_path, encoding='utf-8') as f:
-            return yaml.safe_load(f)
-    except FileNotFoundError:
-        return {}
+    from configs.settings import STREAMLIT_CONFIG
+    return STREAMLIT_CONFIG
 
 
 config = load_app_config()
@@ -160,7 +171,6 @@ def load_pipeline():
     """Load the complete inspection pipeline. Cached globally."""
     from pipeline.orchestrator import PCBInspectionPipeline
     pipeline = PCBInspectionPipeline(
-        config_dir=str(PROJECT_ROOT / "configs"),
         enable_xai=True,
         enable_retrieval=True,
         enable_llm=True,
@@ -185,6 +195,10 @@ def init_session_state():
         "uploaded_filename": "",
         "current_page": "Upload & Detect",
         "analysis_complete": False,
+        "conf_threshold": 0.35,
+        "enable_xai": True,
+        "enable_retrieval": True,
+        "enable_llm": True,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -283,20 +297,21 @@ def render_upload_page():
             help="Upload a PCB image for defect inspection",
         )
 
-        if uploaded_file:
+        if uploaded_file is not None:
             # Store in session state
             file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
             image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
             st.session_state.uploaded_image = image
             st.session_state.uploaded_filename = uploaded_file.name
 
+        if st.session_state.uploaded_image is not None:
             st.image(
-                cv2.cvtColor(image, cv2.COLOR_BGR2RGB),
-                caption=f"Uploaded: {uploaded_file.name}",
+                cv2.cvtColor(st.session_state.uploaded_image, cv2.COLOR_BGR2RGB),
+                caption=f"Uploaded: {st.session_state.uploaded_filename}",
                 use_column_width=True,
             )
 
-            h, w = image.shape[:2]
+            h, w = st.session_state.uploaded_image.shape[:2]
             st.caption(f"Resolution: {w} × {h} pixels")
 
     with col2:
@@ -305,13 +320,17 @@ def render_upload_page():
         conf_threshold = st.slider(
             "Confidence Threshold",
             min_value=0.1, max_value=0.9,
-            value=0.35, step=0.05,
+            value=st.session_state.conf_threshold, step=0.05,
             help="Minimum confidence to report a defect",
         )
+        st.session_state.conf_threshold = conf_threshold
 
-        enable_xai = st.checkbox("Generate Grad-CAM Heatmaps", value=True)
-        enable_retrieval = st.checkbox("Retrieve Similar Cases", value=True)
-        enable_llm = st.checkbox("Generate LLM Report", value=True)
+        enable_xai = st.checkbox("Generate Grad-CAM Heatmaps", value=st.session_state.enable_xai)
+        st.session_state.enable_xai = enable_xai
+        enable_retrieval = st.checkbox("Retrieve Similar Cases", value=st.session_state.enable_retrieval)
+        st.session_state.enable_retrieval = enable_retrieval
+        enable_llm = st.checkbox("Generate LLM Report", value=st.session_state.enable_llm)
+        st.session_state.enable_llm = enable_llm
 
         if enable_llm:
             st.warning(

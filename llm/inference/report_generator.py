@@ -64,20 +64,20 @@ class PCBReportGenerator:
 
     def __init__(
         self,
-        config_path: str = "configs/llm.yaml",
-        ft_config_path: str = "configs/fine_tuning.yaml",
+        config: Optional[dict] = None,
+        ft_config: Optional[dict] = None,
         use_fine_tuned: bool = True,
     ) -> None:
         """
         Initialize the report generator.
 
         Args:
-            config_path: LLM configuration path.
-            ft_config_path: Fine-tuning configuration path.
+            config: LLM configuration dictionary.
+            ft_config: Fine-tuning configuration dictionary.
             use_fine_tuned: Load fine-tuned LoRA model if True, else base model.
         """
-        self.config = self._load_config(config_path)
-        self.ft_config = self._load_config(ft_config_path)
+        self.config = config or {}
+        self.ft_config = ft_config or {}
         self.use_fine_tuned = use_fine_tuned
 
         self.tokenizer: Optional[AutoTokenizer] = None
@@ -88,14 +88,6 @@ class PCBReportGenerator:
             f"PCBReportGenerator initialized | "
             f"fine_tuned={'yes' if use_fine_tuned else 'no'}"
         )
-
-    def _load_config(self, path: str) -> dict:
-        try:
-            with open(path, encoding="utf-8") as f:
-                return yaml.safe_load(f)
-        except FileNotFoundError:
-            logger.warning(f"Config not found: {path}")
-            return {}
 
     def load_model(self) -> None:
         """

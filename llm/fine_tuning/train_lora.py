@@ -76,10 +76,7 @@ import mlflow
 console = Console()
 
 
-def load_config(config_path: str) -> dict:
-    """Load fine-tuning configuration."""
-    with open(config_path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+# Removed load_config
 
 
 def load_tokenizer(model_name_or_path: str, local_dir: str) -> "AutoTokenizer":
@@ -379,14 +376,16 @@ def load_instruction_dataset(
     return split["train"], split["test"]
 
 
-def train_lora(config_path: str = "configs/fine_tuning.yaml") -> None:
+def train_lora(config: Optional[dict] = None) -> None:
     """
     Main LoRA fine-tuning function.
 
     Args:
-        config_path: Path to fine-tuning configuration YAML.
+        config: Fine-tuning configuration dictionary.
     """
-    config = load_config(config_path)
+    if config is None:
+        from configs.settings import FINE_TUNING_CONFIG
+        config = FINE_TUNING_CONFIG
 
     console.rule("[bold blue]LoRA Fine-Tuning: Qwen2.5-1.5B-Instruct")
 
@@ -421,9 +420,8 @@ def train_lora(config_path: str = "configs/fine_tuning.yaml") -> None:
     model = apply_lora(model, config["lora"])
 
     # --- Load Dataset ---
-    system_prompt = yaml.safe_load(
-        open("configs/llm.yaml", encoding="utf-8")
-    ).get("system_prompt", "You are a PCB inspection expert.")
+    from configs.settings import LLM_CONFIG
+    system_prompt = LLM_CONFIG.get("system_prompt", "You are a PCB inspection expert.")
 
     train_dataset, eval_dataset = load_instruction_dataset(
         data_path=config["dataset"]["path"],
@@ -520,13 +518,15 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    from configs.settings import FINE_TUNING_CONFIG
+    
     if args.generate_data_only:
         sys.path.insert(0, str(Path(__file__).parent.parent.parent))
         from llm.fine_tuning.generate_dataset import generate_dataset
-        cfg = load_config(args.config)
+        cfg = FINE_TUNING_CONFIG
         generate_dataset(
             output_path=cfg["generation"]["output_path"],
             n_samples=cfg["generation"]["synthetic_samples"],
         )
     else:
-        train_lora(args.config)
+        train_lora(FINE_TUNING_CONFIG)

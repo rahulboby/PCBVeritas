@@ -125,7 +125,7 @@ def _get_best_weights_path(model: YOLO, config: dict) -> Path:
 
 
 def train_detector(
-    config_path: str = "configs/training.yaml",
+    config: Optional[dict] = None,
     resume: bool = False,
     resume_path: Optional[str] = None,
 ) -> dict:
@@ -133,7 +133,7 @@ def train_detector(
     Train YOLOv8s on PCB defect dataset.
 
     Args:
-        config_path: Path to training configuration YAML.
+        config: Training configuration dictionary.
         resume: Whether to resume from a previous checkpoint.
         resume_path: Path to checkpoint to resume from.
 
@@ -141,9 +141,10 @@ def train_detector(
         Dictionary of training results/metrics.
     """
     # --- Load configuration ---
-    logger.info(f"Loading training config from: {config_path}")
-    with open(config_path, encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    if config is None:
+        from configs.settings import TRAINING_CONFIG
+        config = TRAINING_CONFIG
+    logger.info("Loaded training config from Python settings")
 
     # --- Validate prerequisites ---
     dataset_yaml = Path(config["dataset"]["path"])
@@ -321,20 +322,21 @@ def train_detector(
 
 def validate_model(
     weights_path: str = "models/detector/best.pt",
-    config_path: str = "configs/training.yaml",
+    config: Optional[dict] = None,
 ) -> dict:
     """
     Run validation on the test set to get final metrics.
 
     Args:
         weights_path: Path to model weights.
-        config_path: Path to config (for dataset path).
+        config: Training config dictionary.
 
     Returns:
         Validation metrics dict.
     """
-    with open(config_path, encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    if config is None:
+        from configs.settings import TRAINING_CONFIG
+        config = TRAINING_CONFIG
 
     model = YOLO(weights_path)
     
@@ -365,14 +367,15 @@ if __name__ == "__main__":
     from typing import Optional
     
     parser = argparse.ArgumentParser(description="Train YOLOv8s PCB Defect Detector")
-    parser.add_argument("--config", default="configs/training.yaml")
     parser.add_argument("--resume", action="store_true", help="Resume from last checkpoint")
     parser.add_argument("--resume-path", default=None, help="Specific checkpoint to resume")
     parser.add_argument("--validate-only", action="store_true", help="Only run validation")
     parser.add_argument("--weights", default="models/detector/best.pt")
     args = parser.parse_args()
 
+    from configs.settings import TRAINING_CONFIG
+
     if args.validate_only:
-        validate_model(args.weights, args.config)
+        validate_model(args.weights, TRAINING_CONFIG)
     else:
-        train_detector(args.config, args.resume, args.resume_path)
+        train_detector(TRAINING_CONFIG, args.resume, args.resume_path)

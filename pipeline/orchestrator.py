@@ -134,7 +134,6 @@ class PCBInspectionPipeline:
 
     def __init__(
         self,
-        config_dir: str = "configs",
         enable_xai: bool = True,
         enable_retrieval: bool = True,
         enable_llm: bool = True,
@@ -143,12 +142,10 @@ class PCBInspectionPipeline:
         Initialize the pipeline.
 
         Args:
-            config_dir: Directory containing all YAML config files.
             enable_xai: Enable Grad-CAM heatmap generation.
             enable_retrieval: Enable FAISS similarity search.
             enable_llm: Enable LLM report generation.
         """
-        self.config_dir = Path(config_dir)
         self.enable_xai = enable_xai
         self.enable_retrieval = enable_retrieval
         self.enable_llm = enable_llm
@@ -174,9 +171,11 @@ class PCBInspectionPipeline:
     def _get_detector(self):
         if self._detector is None:
             from detector.detector import PCBDefectDetector
+            from configs.settings import INFERENCE_CONFIG
+            weights = INFERENCE_CONFIG.get("model", {}).get("weights", "models/detector/best.pt")
             self._detector = PCBDefectDetector(
-                weights_path=str(self.config_dir.parent / "models/detector/best.pt"),
-                config_path=str(self.config_dir / "inference.yaml"),
+                weights_path=weights,
+                config=INFERENCE_CONFIG,
             )
         return self._detector
 
@@ -184,10 +183,11 @@ class PCBInspectionPipeline:
         if self._cam_generator is None and self.enable_xai:
             try:
                 from xai.grad_cam import PCBGradCAM
+                from configs.settings import XAI_CONFIG
                 detector = self._get_detector()
                 self._cam_generator = PCBGradCAM(
                     yolo_model=detector.model,
-                    config_path=str(self.config_dir / "xai.yaml"),
+                    config=XAI_CONFIG,
                 )
             except Exception as e:
                 logger.warning(f"Could not initialize CAM generator: {e}")
@@ -196,8 +196,9 @@ class PCBInspectionPipeline:
     def _get_xai_visualizer(self):
         if self._xai_visualizer is None:
             from xai.visualizer import XAIVisualizer
+            from configs.settings import XAI_CONFIG
             self._xai_visualizer = XAIVisualizer(
-                config_path=str(self.config_dir / "xai.yaml")
+                config=XAI_CONFIG
             )
         return self._xai_visualizer
 
@@ -205,8 +206,9 @@ class PCBInspectionPipeline:
         if self._embedder is None and self.enable_retrieval:
             try:
                 from retrieval.embedder import SigLIPEmbedder
+                from configs.settings import RETRIEVAL_CONFIG
                 self._embedder = SigLIPEmbedder(
-                    config_path=str(self.config_dir / "retrieval.yaml")
+                    config=RETRIEVAL_CONFIG
                 )
             except Exception as e:
                 logger.warning(f"Could not initialize embedder: {e}")
@@ -216,8 +218,9 @@ class PCBInspectionPipeline:
         if self._search_engine is None and self.enable_retrieval:
             try:
                 from retrieval.faiss_search import FAISSSearchEngine
+                from configs.settings import RETRIEVAL_CONFIG
                 engine = FAISSSearchEngine(
-                    config_path=str(self.config_dir / "retrieval.yaml")
+                    config=RETRIEVAL_CONFIG
                 )
                 engine.load()
                 self._search_engine = engine
@@ -235,9 +238,10 @@ class PCBInspectionPipeline:
         if self._report_generator is None and self.enable_llm:
             try:
                 from llm.inference.report_generator import PCBReportGenerator
+                from configs.settings import LLM_CONFIG, FINE_TUNING_CONFIG
                 self._report_generator = PCBReportGenerator(
-                    config_path=str(self.config_dir / "llm.yaml"),
-                    ft_config_path=str(self.config_dir / "fine_tuning.yaml"),
+                    config=LLM_CONFIG,
+                    ft_config=FINE_TUNING_CONFIG,
                 )
             except Exception as e:
                 logger.warning(f"Could not initialize report generator: {e}")

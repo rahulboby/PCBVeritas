@@ -82,17 +82,17 @@ class SigLIPEmbedder:
 
     def __init__(
         self,
-        config_path: str = "configs/retrieval.yaml",
+        config: Optional[dict] = None,
         model_dir: Optional[str] = None,
     ) -> None:
         """
         Initialize SigLIP embedder.
 
         Args:
-            config_path: Path to retrieval configuration.
+            config: Retrieval configuration dictionary.
             model_dir: Local directory to cache the model. If None, uses config.
         """
-        self.config = self._load_config(config_path)
+        self.config = config or {}
         (
             self.cv2,
             self.torch,
@@ -123,14 +123,6 @@ class SigLIPEmbedder:
 
         # Load model
         self.model, self.processor = self._load_model()
-
-    def _load_config(self, config_path: str) -> dict:
-        try:
-            with open(config_path, encoding="utf-8") as f:
-                return yaml.safe_load(f)
-        except FileNotFoundError:
-            logger.warning(f"Config not found: {config_path}. Using defaults.")
-            return {}
 
     def _load_model(self) -> tuple:
         """

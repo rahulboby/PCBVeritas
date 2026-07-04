@@ -118,7 +118,7 @@ class PCBDefectDetector:
     def __init__(
         self,
         weights_path: str = "models/detector/best.pt",
-        config_path: str = "configs/inference.yaml",
+        config: Optional[dict] = None,
         device: Optional[str] = None,
     ) -> None:
         """
@@ -126,11 +126,11 @@ class PCBDefectDetector:
 
         Args:
             weights_path: Path to trained YOLOv8 .pt weights file.
-            config_path: Path to inference configuration YAML.
+            config: Inference configuration dictionary.
             device: Override device ('cuda', 'cpu', '0'). Auto-detected if None.
         """
         self.weights_path = Path(weights_path)
-        self.config = self._load_config(config_path)
+        self.config = config or {}
         
         # Determine device
         if device is not None:
@@ -159,15 +159,6 @@ class PCBDefectDetector:
             f"PCBDefectDetector ready | weights={self.weights_path.name} | "
             f"device={self.device} | conf={self.conf_threshold} | iou={self.iou_threshold}"
         )
-
-    def _load_config(self, config_path: str) -> dict:
-        """Load YAML configuration with graceful fallback."""
-        try:
-            with open(config_path, encoding="utf-8") as f:
-                return yaml.safe_load(f)
-        except FileNotFoundError:
-            logger.warning(f"Config not found at {config_path}. Using defaults.")
-            return {}
 
     def _load_model(self) -> YOLO:
         """

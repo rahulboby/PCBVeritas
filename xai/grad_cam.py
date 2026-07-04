@@ -148,20 +148,20 @@ class PCBGradCAM:
     def __init__(
         self,
         yolo_model: YOLO,
-        config_path: str = "configs/xai.yaml",
+        config: Optional[dict] = None,
     ) -> None:
         """
         Initialize with a loaded YOLO model.
 
         Args:
             yolo_model: Loaded Ultralytics YOLO model.
-            config_path: Path to XAI configuration.
+            config: XAI configuration dictionary.
         """
         if not GRADCAM_AVAILABLE:
             raise ImportError("Install pytorch-grad-cam: pip install grad-cam")
 
         self.yolo_model = yolo_model
-        self.config = self._load_config(config_path)
+        self.config = config or {}
         
         # Get the target layer from YOLOv8's backbone
         # model.model[-2] is typically the SPPF layer (Spatial Pyramid Pooling Fast)
@@ -172,16 +172,6 @@ class PCBGradCAM:
             f"PCBGradCAM initialized | "
             f"target_layer={self.config.get('grad_cam', {}).get('target_layer_name', 'auto')}"
         )
-
-    def _load_config(self, config_path: str) -> dict:
-        """Load XAI configuration."""
-        import yaml
-        try:
-            with open(config_path, encoding="utf-8") as f:
-                return yaml.safe_load(f)
-        except FileNotFoundError:
-            logger.warning(f"XAI config not found at {config_path}. Using defaults.")
-            return {}
 
     def _get_target_layer(self) -> list:
         """
