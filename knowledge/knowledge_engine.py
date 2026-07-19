@@ -20,7 +20,7 @@ HOW IT WORKS:
 
 CONNECTS TO:
     - pipeline/orchestrator.py: Provides knowledge for LLM prompt
-    - llm/fine_tuning/generate_dataset.py: Source for synthetic data
+    - llm/inference/report_generator.py: Supplies RAG context for reports
     - app/pages/: Displays knowledge in Streamlit UI
 """
 

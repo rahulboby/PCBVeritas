@@ -48,7 +48,7 @@ def sample_knowledge_json(tmp_path):
                     "contributing_factors": ["Chemistry imbalance"],
                 },
                 "potential_risks": ["Component damage"],
-                "severity_rationale": "Critical — immediate failure.",
+                "severity_rationale": "Critical  immediate failure.",
                 "inspection_procedure": ["AOI"],
                 "repair_recommendations": ["Reject board"],
                 "ipc_standard": "IPC-6012D",

@@ -93,6 +93,9 @@ class YOLOv8GradCAMWrapper(torch.nn.Module):
         super().__init__()
         self.model = model.model  # Access underlying PyTorch model
         self.target_class = target_class
+        self.model.eval()
+        for param in self.model.parameters():
+            param.requires_grad_(True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -122,15 +125,17 @@ class YOLOv8GradCAMWrapper(torch.nn.Module):
         if isinstance(pred, (list, tuple)):
             pred = pred[0]
 
-        # pred shape: [B, num_boxes, 4 + num_classes]
         if len(pred.shape) == 3:
-            # Get class scores (skip first 4 bbox coords)
-            # Max over all predicted boxes to get image-level class score
-            class_scores = pred[..., 4:].max(dim=1)[0]  # [B, num_classes]
+            # Ultralytics detection tensors are usually [B, 4 + classes, anchors].
+            # Some exports use [B, anchors, 4 + classes], so support both.
+            if pred.shape[1] <= pred.shape[2] and pred.shape[1] >= 5:
+                class_scores = pred[:, 4:, :].amax(dim=2)  # [B, num_classes]
+            else:
+                class_scores = pred[..., 4:].amax(dim=1)  # [B, num_classes]
             return class_scores
-        else:
-            # Fallback for different output formats
-            return pred
+
+        # Fallback for different output formats: flatten to classifier-like logits.
+        return pred.reshape(pred.shape[0], -1)
 
 
 class PCBGradCAM:
@@ -240,9 +245,12 @@ class PCBGradCAM:
             image_resized.astype(np.float32) / 255.0
         ).permute(2, 0, 1).unsqueeze(0)
 
-        # Move to same device as model
-        device = next(self.yolo_model.model.parameters()).device
-        image_tensor = image_tensor.to(device)
+        # Move to same device and dtype as model.
+        first_param = next(self.yolo_model.model.parameters())
+        device = first_param.device
+        model_dtype = first_param.dtype if first_param.is_floating_point() else torch.float32
+        image_tensor = image_tensor.to(device=device, dtype=model_dtype)
+        image_tensor.requires_grad_(method != "EigenCAM")
 
         # --- Create model wrapper ---
         tc = target_class if target_class is not None else 0
@@ -264,16 +272,28 @@ class PCBGradCAM:
 
         # --- Generate CAM ---
         try:
-            with CamClass(model=wrapped_model, target_layers=self.target_layer) as cam:
-                # Targets: ClassifierOutputTarget specifies which class score to maximize
-                targets = [ClassifierOutputTarget(tc)] if target_class is not None else None
-                
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    grayscale_cam = cam(
-                        input_tensor=image_tensor,
-                        targets=targets,
-                    )
+            # Grad-CAM needs gradients enabled (model may be in no_grad context).
+            targets = [ClassifierOutputTarget(tc)] if target_class is not None and method != "EigenCAM" else None
+            try:
+                with torch.enable_grad():
+                    with CamClass(model=wrapped_model, target_layers=self.target_layer) as cam:
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            grayscale_cam = cam(
+                                input_tensor=image_tensor,
+                                targets=targets,
+                            )
+            except Exception as cam_error:
+                if method == "EigenCAM":
+                    raise
+                logger.warning(f"{method} failed ({cam_error}); retrying with EigenCAM")
+                image_tensor = image_tensor.detach()
+                image_tensor.requires_grad_(False)
+                with EigenCAM(model=wrapped_model, target_layers=self.target_layer) as cam:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        grayscale_cam = cam(input_tensor=image_tensor, targets=None)
+                method = "EigenCAM"
 
             # grayscale_cam shape: [1, H, W] -> [H, W]
             heatmap = grayscale_cam[0]  # Values 0-1

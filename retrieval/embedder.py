@@ -50,7 +50,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional, Union
 import numpy as np
-import yaml
 from loguru import logger
 
 
@@ -112,8 +111,10 @@ class SigLIPEmbedder:
         self.batch_size = self.config.get("embedding", {}).get("batch_size", 32)
         self.normalize = self.config.get("embedding", {}).get("normalize", True)
 
-        # Device selection
-        device_str = self.config.get("embedding", {}).get("device", "cuda")
+        # Device selection.
+        # Keep SigLIP embeddings on CPU by default so they do not compete with
+        # YOLO inference or LM Studio for GPU VRAM.
+        device_str = self.config.get("embedding", {}).get("device", "cpu")
         if device_str == "cuda" and self.torch.cuda.is_available():
             self.device = self.torch.device("cuda")
             logger.info(f"SigLIP using GPU: {self.torch.cuda.get_device_name(0)}")
@@ -123,6 +124,16 @@ class SigLIPEmbedder:
 
         # Load model
         self.model, self.processor = self._load_model()
+
+    def warmup(self) -> None:
+        """Run one embedding pass so SigLIP CUDA kernels are ready before upload."""
+        if getattr(self, "_warmed_up", False):
+            return
+
+        dummy = np.zeros((self.image_size, self.image_size, 3), dtype=np.uint8)
+        _ = self.embed_batch([dummy])
+        self._warmed_up = True
+        logger.info("SigLIP embedder warmup complete")
 
     def _load_model(self) -> tuple:
         """
@@ -234,8 +245,15 @@ class SigLIPEmbedder:
                 padding=True,
             )
 
-            # Move to device
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            # Move to device and match model dtype (processor outputs float32,
+            # but model may be loaded in float16 on GPU)
+            model_dtype = next(self.model.parameters()).dtype
+            inputs = {
+                k: v.to(device=self.device, dtype=model_dtype)
+                   if v.is_floating_point()
+                   else v.to(self.device)
+                for k, v in inputs.items()
+            }
 
             with self.torch.no_grad():
                 # SigLIP returns image_embeds from the vision encoder

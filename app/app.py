@@ -19,7 +19,6 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import streamlit as st
-import yaml
 import numpy as np
 import cv2
 from PIL import Image
@@ -45,7 +44,7 @@ torch.load = safe_load
 # ============================================================
 st.set_page_config(
     page_title="PCB-VLM-XAI | Intelligent PCB Inspection",
-    page_icon="🔬",
+    page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -166,7 +165,7 @@ st.markdown("""
 # ============================================================
 # Pipeline initialization (cached across sessions)
 # ============================================================
-@st.cache_resource(show_spinner="Loading inspection models...")
+@st.cache_resource(show_spinner="Loading inspection models and configuring the LLM API client... This may take a minute on first launch.")
 def load_pipeline():
     """Load the complete inspection pipeline. Cached globally."""
     from pipeline.orchestrator import PCBInspectionPipeline
@@ -175,6 +174,8 @@ def load_pipeline():
         enable_retrieval=True,
         enable_llm=True,
     )
+    # Pre-load local vision models and initialize the LLM API client at startup.
+    pipeline.preload_all()
     return pipeline
 
 
@@ -207,6 +208,10 @@ def init_session_state():
 
 init_session_state()
 
+# Eagerly load all models at startup (cached by @st.cache_resource)
+pipeline = load_pipeline()
+knowledge_engine = load_knowledge_engine()
+
 
 # ============================================================
 # Sidebar Navigation
@@ -214,23 +219,23 @@ init_session_state()
 def render_sidebar():
     """Render the sidebar navigation and settings."""
     with st.sidebar:
-        st.markdown("## 🔬 PCB-VLM-XAI")
+        st.markdown("## PCB-VLM-XAI")
         st.markdown("*Explainable Vision-Language PCB Inspection*")
         st.markdown("---")
 
         pages = [
-            ("📷", "Upload & Detect"),
-            ("🔍", "XAI Visualizations"),
-            ("🔎", "Similar Defects"),
-            ("📚", "Knowledge Insights"),
-            ("📋", "Inspection Report"),
+            ("Upload", "Upload & Detect"),
+            ("XAI", "XAI Visualizations"),
+            ("Similar", "Similar Defects"),
+            ("Knowledge", "Knowledge Insights"),
+            ("Report", "Inspection Report"),
         ]
 
         st.markdown("### Navigation")
         selected_page = None
-        for icon, page_name in pages:
+        for _, page_name in pages:
             is_active = st.session_state.current_page == page_name
-            btn_label = f"{icon} {page_name}"
+            btn_label = f"{page_name}"
             
             # Disable non-upload pages if no analysis done
             disabled = not st.session_state.analysis_complete and page_name != "Upload & Detect"
@@ -255,8 +260,8 @@ def render_sidebar():
         result = st.session_state.pipeline_result
 
         if result and result.success:
-            st.success(f"✅ {result.num_defects} defects found")
-            st.info(f"⏱️ {result.processing_time:.1f}s total")
+            st.success(f"{result.num_defects} defects found")
+            st.info(f"{result.processing_time:.1f}s total")
 
             if result.stage_times:
                 with st.expander("Timing breakdown"):
@@ -265,17 +270,26 @@ def render_sidebar():
         else:
             st.info("No image analyzed yet")
 
+        model_status = getattr(load_pipeline(), "model_status", {})
+        if model_status:
+            st.markdown("### Model Load Status")
+            for name, status in model_status.items():
+                if str(status).startswith("disabled"):
+                    st.warning(f"{name.upper()}: {status}")
+                else:
+                    st.success(f"{name.upper()}: {status}")
+
         st.markdown("---")
         st.markdown("### About")
         st.markdown("""
         **Models:**
-        - 🎯 YOLOv8s (Detection)
-        - 🌡️ Grad-CAM (XAI)
-        - 🔍 SigLIP + FAISS (Retrieval)
-        - 🤖 Qwen2.5-1.5B LoRA (Reports)
+        - YOLOv8s (Detection)
+        - Grad-CAM (XAI)
+        - SigLIP + FAISS (Retrieval)
+        - OpenAI-compatible LLM API (Reports)
         
         **Hardware Target:**
-        RTX 4050 6GB · i7-13650HX · 24GB RAM
+        RTX 4050 6GB - i7-13650HX - 24GB RAM
         """)
 
 
@@ -284,7 +298,7 @@ def render_sidebar():
 # ============================================================
 def render_upload_page():
     """Render the upload and detection page."""
-    st.markdown("# 📷 Upload PCB & Detect Defects")
+    st.markdown("# Upload PCB & Detect Defects")
     st.markdown("Upload a PCB image to begin automated defect inspection.")
 
     col1, col2 = st.columns([1, 1])
@@ -312,7 +326,7 @@ def render_upload_page():
             )
 
             h, w = st.session_state.uploaded_image.shape[:2]
-            st.caption(f"Resolution: {w} × {h} pixels")
+            st.caption(f"Resolution: {w} x {h} pixels")
 
     with col2:
         st.markdown("### Detection Settings")
@@ -333,15 +347,18 @@ def render_upload_page():
         st.session_state.enable_llm = enable_llm
 
         if enable_llm:
-            st.warning(
-                "⚠️ LLM report generation may take 30-60 seconds on first run "
-                "while the model loads into memory."
-            )
-
+            llm_reason = getattr(load_pipeline(), "_llm_unavailable_reason", "")
+            if llm_reason:
+                st.warning(
+                    "LLM report generation is disabled because the configured API client "
+                    f"is unavailable: {llm_reason}"
+                )
+            else:
+                st.info("LLM API client is configured; report generation runs during inspection.")
         st.markdown("---")
 
         run_button = st.button(
-            "🚀 Run Inspection",
+            "Run Inspection",
             type="primary",
             use_container_width=True,
             disabled=st.session_state.uploaded_image is None,
@@ -363,7 +380,7 @@ def render_upload_page():
 
 def _run_inspection(image, conf_threshold, enable_xai, enable_retrieval, enable_llm):
     """Run the inspection pipeline and update session state."""
-    with st.spinner("🔬 Running PCB inspection pipeline..."):
+    with st.spinner("Running PCB inspection pipeline..."):
         pipeline = load_pipeline()
 
         # Override confidence threshold
@@ -387,9 +404,9 @@ def _run_inspection(image, conf_threshold, enable_xai, enable_retrieval, enable_
         st.session_state.analysis_complete = True
 
     if result.success:
-        st.success(f"✅ Inspection complete! Found {result.num_defects} defect(s)")
+        st.success(f"Inspection complete! Found {result.num_defects} defect(s)")
     else:
-        st.error(f"❌ Inspection failed: {result.error_message}")
+        st.error(f"Inspection failed: {result.error_message}")
 
     st.rerun()
 
@@ -412,7 +429,7 @@ def _render_detection_results():
     with col2:
         critical = sum(1 for d in result.detections
                       if knowledge_engine.get_severity(d.class_name) == "critical")
-        st.metric("Critical", critical, delta=f"{'⚠️' if critical else '✅'}")
+        st.metric("Critical", critical, delta="warning" if critical else "ok")
     with col3:
         if result.detections:
             avg_conf = np.mean([d.confidence for d in result.detections])
@@ -439,10 +456,10 @@ def _render_detection_results():
                 for det in result.detections:
                     severity = knowledge_engine.get_severity(det.class_name)
                     color_map = {
-                        "critical": "🔴", "high": "🟠",
-                        "medium": "🟡", "low": "🟢"
+                        "critical": "CRITICAL", "high": "HIGH",
+                        "medium": "MEDIUM", "low": "LOW"
                     }
-                    icon = color_map.get(severity, "⚪")
+                    icon = color_map.get(severity, "UNKNOWN")
                     with st.expander(
                         f"{icon} {det.class_name.replace('_', ' ').title()} ({det.confidence:.1%})"
                     ):
@@ -461,7 +478,7 @@ def _render_detection_results():
 # ============================================================
 def render_xai_page():
     """Render the XAI/Grad-CAM visualization page."""
-    st.markdown("# 🔍 XAI Visualizations")
+    st.markdown("# XAI Visualizations")
     st.markdown(
         "Grad-CAM heatmaps show **which regions** the neural network focused on "
         "when detecting defects. Warmer colors (red/yellow) indicate higher activation."
@@ -516,14 +533,14 @@ def render_xai_page():
         buf = io.BytesIO()
         pil_overlay.save(buf, format="PNG")
         st.download_button(
-            label="⬇️ Download Overlay Image",
+            label="Download Overlay Image",
             data=buf.getvalue(),
             file_name="gradcam_overlay.png",
             mime="image/png",
         )
 
     # Educational explanation
-    with st.expander("📖 How does Grad-CAM work?"):
+    with st.expander("How does Grad-CAM work?"):
         st.markdown("""
         **Gradient-weighted Class Activation Mapping (Grad-CAM)**
         
@@ -545,7 +562,7 @@ def render_xai_page():
 # ============================================================
 def render_retrieval_page():
     """Render the similar defects retrieval gallery."""
-    st.markdown("# 🔎 Similar Defect Retrieval")
+    st.markdown("# Similar Defect Retrieval")
     st.markdown(
         "For each detected defect, the system retrieves the **3 most visually similar** "
         "cases from the historical database using SigLIP embeddings + FAISS search."
@@ -586,11 +603,11 @@ def render_retrieval_page():
 
                 # Similarity color
                 if similarity >= 0.85:
-                    sim_color = "🟢"
+                    sim_color = "High"
                 elif similarity >= 0.7:
-                    sim_color = "🟡"
+                    sim_color = "Medium"
                 else:
-                    sim_color = "🟠"
+                    sim_color = "Low"
 
                 st.markdown(f"**Similar #{i+1}**")
                 st.markdown(f"{sim_color} Similarity: **{similarity:.2f}**")
@@ -610,19 +627,19 @@ def render_retrieval_page():
 
         st.markdown("---")
 
-    with st.expander("📖 How does similarity search work?"):
+    with st.expander("How does similarity search work?"):
         st.markdown("""
         **SigLIP + FAISS Retrieval Pipeline**
         
         1. **Crop**: Extract defect region from PCB image (+20px padding)
-        2. **SigLIP**: Pass crop through SigLIP vision encoder → 768-dim vector
+        2. **SigLIP**: Pass crop through SigLIP vision encoder -> 768-dim vector
         3. **Normalize**: L2-normalize vector (enables cosine similarity via dot product)
         4. **FAISS Search**: Find nearest neighbors in 768-dim embedding space
         5. **Rank**: Sort results by cosine similarity score (1.0 = identical)
         
         **Why SigLIP?**
         SigLIP is trained on billions of image-text pairs, so it understands
-        visual semantics — not just pixel patterns. Two "missing hole" defects
+        visual semantics, not just pixel patterns. Two "missing hole" defects
         from different PCBs will be close in embedding space even if they differ
         in exact appearance.
         """)
@@ -633,7 +650,7 @@ def render_retrieval_page():
 # ============================================================
 def render_knowledge_page():
     """Render the knowledge base insights page."""
-    st.markdown("# 📚 Knowledge Insights")
+    st.markdown("# Knowledge Insights")
     st.markdown("Domain expert knowledge about each detected defect type.")
 
     knowledge_engine = load_knowledge_engine()
@@ -685,23 +702,23 @@ def render_knowledge_page():
         col1, col2 = st.columns(2)
 
         with col1:
-            st.markdown("#### 🔧 Manufacturing Causes")
+            st.markdown("#### Manufacturing Causes")
             causes = info.get("causes", [])
             for cause in causes:
                 st.markdown(f"- {cause}")
 
-            st.markdown("#### ⚠️ Potential Risks")
+            st.markdown("#### Potential Risks")
             risks = info.get("potential_risks", [])
             for risk in risks:
                 st.markdown(f"- {risk}")
 
         with col2:
-            st.markdown("#### 🔍 Inspection Procedure")
+            st.markdown("#### Inspection Procedure")
             procs = info.get("inspection_procedure", [])
             for i, proc in enumerate(procs, 1):
                 st.markdown(f"{i}. {proc}")
 
-            st.markdown("#### 🛠️ Repair Recommendations")
+            st.markdown("#### Repair Recommendations")
             recs = info.get("repair_recommendations", [])
             for rec in recs:
                 st.markdown(f"- {rec}")
@@ -709,7 +726,7 @@ def render_knowledge_page():
         # Manufacturing process
         mfg = info.get("manufacturing_process", {})
         if mfg:
-            with st.expander("🏭 Manufacturing Process Details"):
+            with st.expander("Manufacturing Process Details"):
                 st.markdown(f"**Stage:** {mfg.get('stage', 'N/A')}")
                 st.markdown(mfg.get("process_description", ""))
                 factors = mfg.get("contributing_factors", [])
@@ -726,8 +743,8 @@ def render_knowledge_page():
 # ============================================================
 def render_report_page():
     """Render the LLM-generated inspection report."""
-    st.markdown("# 📋 Inspection Report")
-    st.markdown("AI-generated expert inspection report powered by fine-tuned Qwen2.5.")
+    st.markdown("# Inspection Report")
+    st.markdown("AI-generated expert inspection report powered by RAG and the configured LLM API.")
 
     result = st.session_state.pipeline_result
     if not result:
@@ -747,7 +764,7 @@ def render_report_page():
     col1, col2 = st.columns(2)
     with col1:
         st.download_button(
-            label="⬇️ Download Report (Markdown)",
+            label="Download Report (Markdown)",
             data=result.report,
             file_name=f"pcb_inspection_report_{st.session_state.uploaded_filename}.md",
             mime="text/markdown",
@@ -757,7 +774,7 @@ def render_report_page():
         import json
         summary_json = json.dumps(result.get_summary(), indent=2)
         st.download_button(
-            label="⬇️ Download Summary (JSON)",
+            label="Download Summary (JSON)",
             data=summary_json,
             file_name="inspection_summary.json",
             mime="application/json",
@@ -789,3 +806,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

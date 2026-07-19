@@ -3,40 +3,19 @@ PCB Inspection Pipeline Orchestrator
 ======================================
 PURPOSE:
     Coordinates the full end-to-end PCB inspection pipeline:
-    Image → Detection → XAI → Embedding → Retrieval → Knowledge → LLM → Report
+    Image -> Detection -> XAI -> Embedding -> Retrieval -> Knowledge -> LLM -> Report
 
     This is the central coordinator that calls all modules in sequence
     and assembles the final inspection result.
 
 PIPELINE DIAGRAM:
     PCB Image
-        │
-        ▼
-    YOLOv8s Detection ──────────────────────────────────────────────────────┐
-        │                                                                   │
-        ├─ Bounding Boxes                                                   │
-        ├─ Class Labels                                                     │
-        └─ Confidence Scores                                                │
-        │                                                                   │
-        ├──────────────────────────┐                                        │
-        ▼                          ▼                                        ▼
-    Grad-CAM/EigenCAM         SigLIP Embedder                        Detection viz
-        │                          │
-        ▼                          ▼
-    Heatmaps                  FAISS Search
-        │                          │
-        │                          ▼
-        │                    Similar Cases
-        │                          │
-        └──────────────────────────┤
-                                   ▼
-                           Knowledge Engine
-                                   │
-                                   ▼
-                        LoRA Fine-Tuned Qwen
-                                   │
-                                   ▼
-                          Inspection Report
+      -> YOLOv8s Detection
+      -> Grad-CAM/EigenCAM and SigLIP crop embeddings
+      -> FAISS similar-case retrieval
+      -> Knowledge Engine context
+      -> OpenAI-compatible LLM API
+      -> Inspection Report
 
 INPUT:
     PCB image (path or numpy array)
@@ -62,7 +41,6 @@ from pathlib import Path
 from typing import Optional, Union
 import numpy as np
 import cv2
-import yaml
 from loguru import logger
 
 
@@ -158,7 +136,8 @@ class PCBInspectionPipeline:
         self._search_engine = None
         self._knowledge_engine = None
         self._report_generator = None
-
+        self._llm_unavailable_reason = ""
+        self.model_status: dict[str, str] = {}
         logger.info(
             f"PCBInspectionPipeline initialized | "
             f"xai={enable_xai} | retrieval={enable_retrieval} | llm={enable_llm}"
@@ -235,21 +214,23 @@ class PCBInspectionPipeline:
         return self._knowledge_engine
 
     def _get_report_generator(self):
+        if self._llm_unavailable_reason:
+            logger.warning(f"LLM unavailable: {self._llm_unavailable_reason}")
+            return None
+
         if self._report_generator is None and self.enable_llm:
             try:
                 from llm.inference.report_generator import PCBReportGenerator
-                from configs.settings import LLM_CONFIG, FINE_TUNING_CONFIG
+                from configs.settings import LLM_CONFIG
                 self._report_generator = PCBReportGenerator(
                     config=LLM_CONFIG,
-                    ft_config=FINE_TUNING_CONFIG,
                 )
             except Exception as e:
                 logger.warning(f"Could not initialize report generator: {e}")
         return self._report_generator
 
     # ============================================================
-    # Pipeline stages
-    # ============================================================
+    # Pipeline stages    # ============================================================
 
     def _stage_detect(self, image: np.ndarray) -> tuple:
         """Run YOLOv8 detection."""
@@ -305,17 +286,22 @@ class PCBInspectionPipeline:
         if embedder is None or search_engine is None:
             return {}
 
-        retrieved = {}
-        for idx, det in enumerate(detections):
-            if det.crop is None:
-                continue
+        indexed_crops = [(idx, det.crop) for idx, det in enumerate(detections) if det.crop is not None]
+        if not indexed_crops:
+            return {}
+
+        retrieved = {idx: [] for idx, _ in indexed_crops}
+        try:
+            embeddings = embedder.embed_batch([crop for _, crop in indexed_crops])
+        except Exception as e:
+            logger.warning(f"Retrieval embedding failed: {e}")
+            return retrieved
+
+        for (idx, _), embedding in zip(indexed_crops, embeddings):
             try:
-                embedding = embedder.embed(det.crop)
-                results = search_engine.search(embedding)
-                retrieved[idx] = results
+                retrieved[idx] = search_engine.search(embedding)
             except Exception as e:
-                logger.warning(f"Retrieval failed for detection {idx}: {e}")
-                retrieved[idx] = []
+                logger.warning(f"Retrieval search failed for detection {idx}: {e}")
 
         return retrieved
 
@@ -374,7 +360,7 @@ class PCBInspectionPipeline:
             lines.append("")
 
         lines.append("---")
-        lines.append("*Report generated by PCB-VLM-XAI (template mode — LLM unavailable)*")
+        lines.append("*Report generated by PCB-VLM-XAI (template mode -- LLM unavailable)*")
         return "\n".join(lines)
 
     # ============================================================
@@ -433,7 +419,7 @@ class PCBInspectionPipeline:
             result.detections = detections
             result.detection_image = detection_image
             result.num_defects = len(detections)
-            logger.info(f"  → {len(detections)} defects detected in {stage_times['detection']*1000:.0f}ms")
+            logger.info(f"-> {len(detections)} defects detected in {stage_times['detection']*1000:.0f}ms")
 
             # Stage 2: XAI
             if do_xai:
@@ -444,7 +430,7 @@ class PCBInspectionPipeline:
                 result.heatmap = heatmap
                 result.cam_overlay = overlay
                 result.xai_panel = xai_panel
-                logger.info(f"  → Heatmap generated in {stage_times['xai']*1000:.0f}ms")
+                logger.info(f"-> Heatmap generated in {stage_times['xai']*1000:.0f}ms")
 
             # Stage 3: Retrieval
             if do_retrieval and detections:
@@ -454,7 +440,7 @@ class PCBInspectionPipeline:
                 stage_times["retrieval"] = time.perf_counter() - t0
                 result.retrieved_cases = retrieved
                 total_retrieved = sum(len(v) for v in retrieved.values())
-                logger.info(f"  → {total_retrieved} similar cases retrieved in {stage_times['retrieval']*1000:.0f}ms")
+                logger.info(f"-> {total_retrieved} similar cases retrieved in {stage_times['retrieval']*1000:.0f}ms")
 
             # Stage 4: Knowledge
             logger.info("Pipeline Stage 4: Knowledge Base")
@@ -472,7 +458,7 @@ class PCBInspectionPipeline:
                 )
                 stage_times["llm"] = time.perf_counter() - t0
                 result.report = report
-                logger.info(f"  → Report generated in {stage_times['llm']*1000:.0f}ms")
+                logger.info(f"-> Report generated in {stage_times['llm']*1000:.0f}ms")
             else:
                 result.report = self._fallback_report(detections, knowledge_contexts)
 
@@ -494,24 +480,51 @@ class PCBInspectionPipeline:
 
     def preload_all(self) -> None:
         """
-        Pre-load all models into memory.
-        
-        Call this at app startup to avoid first-request latency.
-        Loading order: detector → embedder → search → knowledge → LLM
+        Pre-load all available models into memory.
+
+        The detector and SigLIP run a tiny warmup pass so CUDA kernels are
+        initialized before the user uploads an image. The LLM step initializes
+        an OpenAI-compatible API client; if its configuration is invalid, the
+        pipeline falls back to the template report.
         """
         logger.info("Pre-loading all pipeline models...")
-        self._get_detector()
+        self.model_status = {}
+
+        detector = self._get_detector()
+        detector.warmup()
+        self.model_status["detector"] = f"ready on {detector.device}"
+
         if self.enable_xai:
             self._get_cam_generator()
+            self._get_xai_visualizer()
+            self.model_status["xai"] = "ready on detector device"
+
         if self.enable_retrieval:
-            self._get_embedder()
-            self._get_search_engine()
+            embedder = self._get_embedder()
+            if embedder:
+                embedder.warmup()
+                self.model_status["siglip"] = f"ready on {embedder.device}"
+            search_engine = self._get_search_engine()
+            if search_engine:
+                self.model_status["faiss"] = "ready"
+
         self._get_knowledge_engine()
+        self.model_status["knowledge"] = "ready"
+
         if self.enable_llm:
             gen = self._get_report_generator()
             if gen:
-                gen.load_model()
-        logger.info("All models pre-loaded.")
+                try:
+                    gen.load_model()
+                    gen.warmup()
+                    self.model_status["llm"] = gen.device_summary()
+                except Exception as e:
+                    self._llm_unavailable_reason = str(e)
+                    self._report_generator = None
+                    self.model_status["llm"] = f"disabled: {e}"
+                    logger.error(f"LLM API preload failed: {e}")
+
+        logger.info("All available models pre-loaded.")
 
 
 from typing import Optional, Union

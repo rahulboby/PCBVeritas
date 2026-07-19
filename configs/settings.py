@@ -7,7 +7,7 @@ STREAMLIT_CONFIG = {
     "app": {
         "title": "PCB-VLM-XAI: Intelligent PCB Inspection System",
         "subtitle": "Explainable Vision-Language Defect Analysis",
-        "icon": "🔬",
+        "icon": "PCB",
         "layout": "wide",
         "theme": "dark"
     },
@@ -16,11 +16,11 @@ STREAMLIT_CONFIG = {
         "allowed_formats": ["jpg", "jpeg", "png", "bmp", "tiff"]
     },
     "pages": [
-        {"name": "Upload & Detect", "icon": "📷"},
-        {"name": "XAI Visualizations", "icon": "🔍"},
-        {"name": "Similar Defects", "icon": "🔎"},
-        {"name": "Knowledge Insights", "icon": "📚"},
-        {"name": "Inspection Report", "icon": "📋"}
+        {"name": "Upload & Detect", "icon": "Upload"},
+        {"name": "XAI Visualizations", "icon": "XAI"},
+        {"name": "Similar Defects", "icon": "Similar"},
+        {"name": "Knowledge Insights", "icon": "Knowledge"},
+        {"name": "Inspection Report", "icon": "Report"}
     ],
     "display": {
         "thumbnail_size": [200, 200],
@@ -35,7 +35,6 @@ STREAMLIT_CONFIG = {
         "detector_weights": "models/detector/best.pt",
         "embedding_index": "data/embeddings/faiss_index.bin",
         "embedding_metadata": "data/embeddings/metadata.json",
-        "llm_dir": "models/llm/fine_tuned_qwen",
         "siglip_dir": "models/embeddings/siglip"
     },
     "cache": {
@@ -179,7 +178,9 @@ RETRIEVAL_CONFIG = {
         "image_size": 224,
         "embedding_dim": 768,
         "batch_size": 32,
-        "device": "cuda",
+        # Keep retrieval and SigLIP on CPU by default so GPU VRAM stays free
+        # for the YOLO detector and any local LLM offloading.
+        "device": "cpu",
         "normalize": True
     },
     "faiss": {
@@ -241,105 +242,60 @@ XAI_CONFIG = {
 }
 
 LLM_CONFIG = {
-    "model": {
-        "name": "Qwen/Qwen2.5-1.5B-Instruct",
-        "local_dir": "models/llm/qwen2.5-1.5b",
-        "device_map": "auto",
-        "torch_dtype": "float16",
-        "trust_remote_code": True
+    # Change this value to switch report generation between LM Studio and a
+    # cloud provider such as Groq or xAI/Grok. All providers expose an
+    # OpenAI-compatible endpoint.
+    "provider": "lm_studio",
+    "providers": {
+        "lm_studio": {
+            "base_url": "http://localhost:1234/v1",
+            "model": "local-model",
+            "api_key_env": "LM_STUDIO_API_KEY",
+            "api_key_default": "lm-studio",
+            "requires_api_key": False,
+        },
+        "groq": {
+            "base_url": "https://api.groq.com/openai/v1",
+            "model": "llama-3.1-8b-instant",
+            "api_key_env": "GROQ_API_KEY",
+            "api_key_default": "",
+            "requires_api_key": True,
+        },
+        "grok": {
+            "base_url": "https://api.x.ai/v1",
+            "model": "grok-4.5",
+            "api_key_env": "XAI_API_KEY",
+            "api_key_default": "",
+            "requires_api_key": True,
+        },
+    },
+    "client": {
+        "timeout_seconds": 120,
+        "max_retries": 2,
+        "warmup_request": False,
     },
     "generation": {
-        "max_new_tokens": 512,
+        "max_tokens": 700,
         "temperature": 0.3,
         "top_p": 0.9,
-        "top_k": 50,
-        "repetition_penalty": 1.1,
-        "do_sample": True
-    },
-    "tokenizer": {
-        "max_input_length": 2048,
-        "padding_side": "left"
     },
     "system_prompt": (
         "You are an expert PCB (Printed Circuit Board) inspection engineer with 20 years of \n"
         "experience in electronics manufacturing quality control. You analyze PCB defects and \n"
         "provide detailed technical reports for manufacturing engineers.\n\n"
+        "Use the provided RAG context only: YOLO detection data, retrieved similar cases, \n"
+        "and the structured PCB defect knowledge base. If the context does not support a \n"
+        "claim, say that it is not available from the inspection data.\n\n"
         "When given defect information, you must provide:\n"
         "1. Clear defect description\n"
         "2. Root cause analysis\n"
         "3. Severity assessment\n"
         "4. Manufacturing process implications\n"
         "5. Specific repair or corrective action recommendations\n\n"
-        "Be precise, technical, and actionable. Format your response as a structured report.\n"
+        "Be precise, technical, and actionable. Format your response as a structured markdown report.\n"
     ),
     "output": {
         "reports_dir": "outputs/reports",
         "format": "markdown"
-    }
-}
-
-FINE_TUNING_CONFIG = {
-    "base_model": {
-        "name": "Qwen/Qwen2.5-1.5B-Instruct",
-        "local_dir": "models/llm/qwen2.5-1.5b",
-        "torch_dtype": "float16",
-        "trust_remote_code": True
-    },
-    "lora": {
-        "r": 16,
-        "lora_alpha": 32,
-        "target_modules": [
-            "q_proj",
-            "k_proj",
-            "v_proj",
-            "o_proj",
-            "gate_proj",
-            "up_proj",
-            "down_proj"
-        ],
-        "lora_dropout": 0.1,
-        "bias": "none",
-        "task_type": "CAUSAL_LM"
-    },
-    "training": {
-        "output_dir": "models/llm/fine_tuned_qwen",
-        "num_train_epochs": 3,
-        "per_device_train_batch_size": 2,
-        "per_device_eval_batch_size": 2,
-        "gradient_accumulation_steps": 8,
-        "gradient_checkpointing": True,
-        "warmup_steps": 100,
-        "learning_rate": 2.0e-4,
-        "weight_decay": 0.01,
-        "lr_scheduler_type": "cosine",
-        "save_steps": 100,
-        "eval_steps": 100,
-        "logging_steps": 10,
-        "max_grad_norm": 1.0,
-        "fp16": True,
-        "bf16": False,
-        "dataloader_num_workers": 2,
-        "remove_unused_columns": False,
-        "group_by_length": True
-    },
-    "dataset": {
-        "path": "data/fine_tuning/pcb_instructions.json",
-        "train_split": 0.9,
-        "val_split": 0.1,
-        "max_length": 1024,
-        "seed": 42
-    },
-    "generation": {
-        "synthetic_samples": 500,
-        "output_path": "data/fine_tuning/pcb_instructions.json"
-    },
-    "evaluation": {
-        "compute_metrics": True,
-        "metric_for_best_model": "eval_loss",
-        "greater_is_better": False
-    },
-    "mlflow": {
-        "enabled": True,
-        "experiment_name": "PCB_LLM_FineTuning"
     }
 }

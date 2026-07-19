@@ -85,7 +85,7 @@ class TestPCBDefectDetector:
 
                 assert crop is not None
                 assert crop.ndim == 3
-                # With padding=5: x1=45, y1=45, x2=105, y2=105 → 60x60
+                # With padding=5: x1=45, y1=45, x2=105, y2=105  60x60
                 assert crop.shape[0] == 60
                 assert crop.shape[1] == 60
 

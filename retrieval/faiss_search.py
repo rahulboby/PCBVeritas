@@ -54,7 +54,6 @@ import os
 from pathlib import Path
 from typing import Optional
 import numpy as np
-import yaml
 from loguru import logger
 
 if os.name == "nt":
@@ -69,8 +68,7 @@ except ImportError:
     FAISS_AVAILABLE = False
     logger.error(
         "FAISS not installed. Install with:\n"
-        "  pip install faiss-gpu  (with GPU support)\n"
-        "  pip install faiss-cpu  (CPU only)"
+        "  pip install faiss-cpu"
     )
 
 
@@ -100,7 +98,7 @@ class FAISSSearchEngine:
             config: Retrieval configuration dictionary.
         """
         if not FAISS_AVAILABLE:
-            raise ImportError("FAISS is required. Install faiss-gpu or faiss-cpu.")
+            raise ImportError("FAISS is required. Install faiss-cpu.")
 
         self.config = config or {}
         faiss_cfg = self.config.get("faiss", {})

@@ -46,6 +46,9 @@ try:
 except ImportError:
     FAISS_AVAILABLE = False
 
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from retrieval.embedder import SigLIPEmbedder
 
 console = Console()
@@ -191,7 +194,7 @@ def build_faiss_index(
         Populated FAISS index ready for search.
     """
     if not FAISS_AVAILABLE:
-        raise ImportError("Install FAISS: pip install faiss-gpu or faiss-cpu")
+        raise ImportError("Install FAISS: pip install faiss-cpu")
 
     n, d = embeddings.shape
     logger.info(f"Building FAISS {index_type} index | vectors={n} | dim={d}")
@@ -305,7 +308,7 @@ def run_build_index(
 
     # --- Step 2: Generate SigLIP embeddings ---
     console.print("\n[yellow]Loading SigLIP embedder...[/yellow]")
-    embedder = SigLIPEmbedder(config_path=config_path)
+    embedder = SigLIPEmbedder(config=config)
 
     console.print("[yellow]Generating embeddings...[/yellow]")
 

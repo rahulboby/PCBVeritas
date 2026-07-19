@@ -29,7 +29,7 @@ console = Console()
 def run_inference(
     source: Union[str, Path],
     weights: str = "models/detector/best.pt",
-    config: str = "configs/inference.yaml",
+    config: Optional[dict] = None,
     conf: Optional[float] = None,
     save_dir: Optional[str] = None,
     show: bool = False,
@@ -40,7 +40,7 @@ def run_inference(
     Args:
         source: Image path or directory path.
         weights: Model weights path.
-        config: Inference config path.
+        config: Inference configuration dictionary.
         conf: Override confidence threshold.
         save_dir: Directory to save annotated images.
         show: Display results using OpenCV window.
@@ -66,8 +66,15 @@ def run_inference(
 
     logger.info(f"Running inference on {len(images)} image(s)")
 
+    if config is None:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from configs.settings import INFERENCE_CONFIG
+        config = INFERENCE_CONFIG
+
     # --- Initialize detector ---
-    detector = PCBDefectDetector(weights_path=weights, config_path=config)
+    detector = PCBDefectDetector(weights_path=weights, config=config)
     
     # Override confidence if provided
     if conf is not None:
@@ -168,7 +175,6 @@ if __name__ == "__main__":
     parser.add_argument("--image", help="Path to single PCB image")
     parser.add_argument("--dir", help="Directory of PCB images")
     parser.add_argument("--weights", default="models/detector/best.pt")
-    parser.add_argument("--config", default="configs/inference.yaml")
     parser.add_argument("--conf", type=float, default=None, help="Confidence threshold override")
     parser.add_argument("--save", default="outputs/detections", help="Save directory")
     parser.add_argument("--show", action="store_true", help="Show results in window")
@@ -181,7 +187,6 @@ if __name__ == "__main__":
     run_inference(
         source=source,
         weights=args.weights,
-        config=args.config,
         conf=args.conf,
         save_dir=args.save,
         show=args.show,

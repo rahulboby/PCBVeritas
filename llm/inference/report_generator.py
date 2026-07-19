@@ -1,155 +1,206 @@
 """
-RAG-Powered PCB Inspection Report Generator
-============================================
-PURPOSE:
-    Combines defect detection results, retrieved similar cases, and
-    knowledge base information to generate comprehensive expert reports
-    using the fine-tuned Qwen2.5 model.
+RAG-powered PCB inspection report generator.
 
-    This is the RAG (Retrieval-Augmented Generation) heart of the system.
-    RAG = Detection Context + Retrieved Cases + Knowledge → LLM → Report
-
-INPUT:
-    - List of detected defects (from detector)
-    - Retrieved similar cases (from FAISS)
-    - Knowledge base context (from KnowledgeEngine)
-
-OUTPUT:
-    - Markdown-formatted inspection report
-    - Structured defect summary (JSON-serializable)
-
-HOW RAG WORKS:
-    1. Detection: YOLOv8 identifies "missing_hole" at 96.7% confidence
-    2. Retrieval: FAISS finds 3 similar historical defects (visual match)
-    3. Knowledge: Engine retrieves causes, risks, repair procedures
-    4. Prompt: Combine all context into a rich prompt for the LLM
-    5. Generation: Fine-tuned Qwen generates the expert report
-
-WHY RAG IS BETTER THAN PURE LLM:
-    - Without RAG: Model relies only on training knowledge
-    - With RAG:    Model grounds response in actual detection data
-                   + specific historical cases + domain knowledge
-    - Result: More accurate, specific, and actionable reports
-
-CONNECTS TO:
-    - pipeline/orchestrator.py: Called as final pipeline step
-    - app/pages/report_page.py: Report displayed in Streamlit
+This module keeps the pipeline-facing report generator API, but sends the
+assembled RAG context to an OpenAI-compatible chat endpoint such as LM Studio,
+Groq, or xAI/Grok. Endpoint, model, and secret handling live in
+configs/settings.py.
 """
 
-from pathlib import Path
-from typing import Optional
-import yaml
-import torch
+from __future__ import annotations
+
+import os
+from typing import Any, Optional
+
+from dotenv import load_dotenv
 from loguru import logger
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from peft import PeftModel
+
+try:
+    from openai import OpenAI
+except ImportError:  # pragma: no cover - exercised only before dependencies install
+    OpenAI = None
 
 
 class PCBReportGenerator:
     """
-    Generates expert PCB inspection reports using a fine-tuned Qwen model
-    with Retrieval-Augmented Generation (RAG).
-
-    Supports both the fine-tuned LoRA model and the base model as fallback.
+    Generates expert PCB inspection reports using RAG context and an
+    OpenAI-compatible chat completions API.
 
     Example:
         generator = PCBReportGenerator()
         report = generator.generate_report(
-            detections=[{'class_name': 'missing_hole', 'confidence': 0.967}],
-            retrieved_cases=[{'label': 'missing_hole', 'similarity': 0.92}],
-            knowledge_context="Defect: Missing Hole | Severity: HIGH..."
+            defect_name="missing_hole",
+            confidence=0.967,
+            retrieved_cases=[{"label": "missing_hole", "similarity": 0.92}],
+            knowledge_context="Defect: Missing Hole | Severity: HIGH...",
         )
-        print(report)
     """
 
-    def __init__(
-        self,
-        config: Optional[dict] = None,
-        ft_config: Optional[dict] = None,
-        use_fine_tuned: bool = True,
-    ) -> None:
-        """
-        Initialize the report generator.
-
-        Args:
-            config: LLM configuration dictionary.
-            ft_config: Fine-tuning configuration dictionary.
-            use_fine_tuned: Load fine-tuned LoRA model if True, else base model.
-        """
+    def __init__(self, config: Optional[dict] = None) -> None:
         self.config = config or {}
-        self.ft_config = ft_config or {}
-        self.use_fine_tuned = use_fine_tuned
+        self.provider_name = (
+            self.config.get("provider")
+            or os.getenv("PCB_LLM_PROVIDER")
+            or "lm_studio"
+        )
+        self.provider_config = self._resolve_provider_config()
+        self.model_name = self.provider_config.get("model", "local-model")
 
-        self.tokenizer: Optional[AutoTokenizer] = None
-        self.model: Optional[AutoModelForCausalLM] = None
-        self._model_loaded = False
+        self.client: Optional[Any] = None
+        self._client_ready = False
+        self._warmed_up = False
 
         logger.info(
-            f"PCBReportGenerator initialized | "
-            f"fine_tuned={'yes' if use_fine_tuned else 'no'}"
+            "PCBReportGenerator initialized | "
+            f"provider={self.provider_name} | model={self.model_name}"
         )
+
+    def _resolve_provider_config(self) -> dict:
+        providers = self.config.get("providers", {})
+        provider_config = providers.get(self.provider_name)
+        if not provider_config:
+            available = ", ".join(sorted(providers)) or "none"
+            raise ValueError(
+                f"Unknown LLM provider '{self.provider_name}'. "
+                f"Available providers: {available}"
+            )
+        return provider_config
+
+    def _resolve_api_key(self) -> str:
+        load_dotenv()
+
+        api_key_env = self.provider_config.get("api_key_env", "OPENAI_API_KEY")
+        api_key = os.getenv(api_key_env) or self.provider_config.get("api_key_default", "")
+        requires_key = bool(self.provider_config.get("requires_api_key", True))
+
+        if requires_key and not api_key:
+            raise RuntimeError(
+                f"Missing API key for LLM provider '{self.provider_name}'. "
+                f"Set {api_key_env} in your environment or local .env file."
+            )
+
+        return api_key or "local-api-key"
 
     def load_model(self) -> None:
         """
-        Load the tokenizer and language model.
+        Compatibility wrapper used by the pipeline preload step.
 
-        Tries fine-tuned LoRA model first, falls back to base model.
-        Lazy loading — called on first use.
+        No local model is loaded here. The method validates configuration and
+        initializes an OpenAI-compatible API client.
         """
-        if self._model_loaded:
+        if self._client_ready:
             return
 
-        base_dir = self.ft_config.get("base_model", {}).get(
-            "local_dir", "models/llm/qwen2.5-1.5b"
-        )
-        fine_tuned_dir = self.ft_config.get("training", {}).get(
-            "output_dir", "models/llm/fine_tuned_qwen"
-        )
-        model_name = self.ft_config.get("base_model", {}).get(
-            "name", "Qwen/Qwen2.5-1.5B-Instruct"
-        )
+        if OpenAI is None:
+            raise ImportError(
+                "The openai package is required for LLM report generation. "
+                "Install dependencies with: python -m pip install -r requirements.txt"
+            )
 
-        # --- Load tokenizer ---
-        load_path = base_dir if Path(base_dir).exists() else model_name
-        logger.info(f"Loading tokenizer from: {load_path}")
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            load_path,
-            trust_remote_code=True,
-            padding_side="left",
-        )
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+        client_cfg = self.config.get("client", {})
+        api_key = self._resolve_api_key()
+        base_url = self.provider_config.get("base_url")
 
-        # --- Load model ---
-        dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-        logger.info(f"Loading base model: {load_path}")
-        base_model = AutoModelForCausalLM.from_pretrained(
-            load_path,
-            torch_dtype=dtype,
-            trust_remote_code=True,
-            device_map="auto",
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=float(client_cfg.get("timeout_seconds", 120)),
+            max_retries=int(client_cfg.get("max_retries", 2)),
+        )
+        self._client_ready = True
+
+        logger.info(
+            "LLM API client ready | "
+            f"provider={self.provider_name} | model={self.model_name} | base_url={base_url}"
         )
 
-        # --- Apply LoRA weights if available ---
-        fine_tuned_path = Path(fine_tuned_dir)
-        if self.use_fine_tuned and fine_tuned_path.exists():
-            logger.info(f"Loading LoRA adapter from: {fine_tuned_dir}")
-            try:
-                self.model = PeftModel.from_pretrained(base_model, fine_tuned_dir)
-                self.model = self.model.merge_and_unload()  # Merge for faster inference
-                logger.info("Fine-tuned LoRA model loaded successfully")
-            except Exception as e:
-                logger.warning(f"Failed to load LoRA adapter: {e}. Using base model.")
-                self.model = base_model
-        else:
-            logger.info("Using base Qwen model (not fine-tuned)")
-            self.model = base_model
+    def warmup(self) -> None:
+        """
+        Optionally run a tiny API request, disabled by default to avoid startup
+        latency and paid-token usage.
+        """
+        if self._warmed_up:
+            return
 
-        self.model.eval()
-        self._model_loaded = True
+        self.load_model()
 
-        total_params = sum(p.numel() for p in self.model.parameters()) / 1e9
-        logger.info(f"Model ready | {total_params:.2f}B parameters")
+        if self.config.get("client", {}).get("warmup_request", False):
+            self._generate_from_messages(
+                [
+                    {"role": "system", "content": "You are a PCB inspection assistant."},
+                    {"role": "user", "content": "Reply with: ready"},
+                ],
+                max_tokens=4,
+            )
+
+        self._warmed_up = True
+        logger.info("LLM API client warmup complete")
+
+    def device_summary(self) -> str:
+        """Human-readable LLM status for the Streamlit sidebar."""
+        if not self._client_ready:
+            return "api client not initialized"
+        return f"api ready: {self.provider_name} / {self.model_name}"
+
+    def _generate_from_messages(
+        self,
+        messages: list[dict[str, str]],
+        max_tokens: Optional[int] = None,
+    ) -> str:
+        """Send chat messages to the configured OpenAI-compatible endpoint."""
+        if not self._client_ready:
+            self.load_model()
+
+        gen_cfg = self.config.get("generation", {})
+        payload: dict[str, Any] = {
+            "model": self.model_name,
+            "messages": messages,
+            "max_tokens": int(max_tokens or gen_cfg.get("max_tokens", 700)),
+            "temperature": float(gen_cfg.get("temperature", 0.3)),
+            "top_p": float(gen_cfg.get("top_p", 0.9)),
+        }
+
+        logger.info(
+            "Generating LLM report via API | "
+            f"provider={self.provider_name} | model={self.model_name}"
+        )
+        completion = self.client.chat.completions.create(**payload)
+        content = completion.choices[0].message.content
+        report = self._coerce_text_content(content)
+
+        logger.info(f"LLM report generated | length={len(report.split())} words")
+        return report.strip()
+
+    @staticmethod
+    def _coerce_text_content(content: Any) -> str:
+        """Normalize OpenAI-compatible response content into plain text."""
+        if content is None:
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                elif isinstance(item, dict):
+                    text = item.get("text") or item.get("content")
+                    if isinstance(text, str):
+                        parts.append(text)
+            return "\n".join(parts)
+        return str(content)
+
+    def _format_retrieved_cases(self, retrieved_cases: Optional[list[dict]]) -> str:
+        if not retrieved_cases:
+            return "No similar historical cases were retrieved above the similarity threshold."
+
+        lines = []
+        for i, case in enumerate(retrieved_cases, 1):
+            label = case.get("label", "unknown").replace("_", " ").title()
+            similarity = case.get("similarity", 0.0)
+            source = case.get("source_image") or case.get("image_path") or case.get("crop_path", "N/A")
+            lines.append(f"{i}. {label} | similarity={similarity:.2f} | source={source}")
+        return "\n".join(lines)
 
     def _build_rag_prompt(
         self,
@@ -158,61 +209,36 @@ class PCBReportGenerator:
         knowledge_context: str,
         retrieved_cases: Optional[list[dict]] = None,
         severity: str = "unknown",
-    ) -> list[dict]:
+    ) -> list[dict[str, str]]:
         """
-        Build the RAG prompt as a chat messages list.
-
-        The prompt combines:
-        1. System message: Expert role definition
-        2. User message: Detection data + knowledge + retrieved cases
-
-        Args:
-            defect_name: Detected defect class name.
-            confidence: Detection confidence (0-1).
-            knowledge_context: Pre-formatted knowledge base context.
-            retrieved_cases: List of similar historical cases from FAISS.
-            severity: Severity level string.
-
-        Returns:
-            List of message dicts for chat template.
+        Build chat messages from detection, retrieval, and knowledge chunks.
         """
         system_prompt = self.config.get(
             "system_prompt",
-            "You are an expert PCB inspection engineer. Generate detailed inspection reports."
+            "You are an expert PCB inspection engineer. Generate detailed inspection reports.",
         )
 
-        # Build retrieved cases section
-        retrieved_section = ""
-        if retrieved_cases:
-            retrieved_section = "\n\nSIMILAR HISTORICAL CASES (from database):\n"
-            for i, case in enumerate(retrieved_cases, 1):
-                label = case.get("label", "Unknown").replace("_", " ").title()
-                sim = case.get("similarity", 0)
-                retrieved_section += f"  Case {i}: {label} (visual similarity: {sim:.2f})\n"
-            retrieved_section += (
-                f"\nNote: {len(retrieved_cases)} similar cases confirm this defect "
-                f"pattern has been observed in production before."
-            )
+        retrieved_context = self._format_retrieved_cases(retrieved_cases)
+        user_message = f"""Generate a comprehensive PCB inspection report for this detected defect.
 
-        user_message = f"""Generate a comprehensive PCB inspection report for the following detected defect.
+RAG_CONTEXT_CHUNKS:
 
-DETECTION DATA:
-===============
+[Detection]
+- Defect class: {defect_name}
+- Confidence: {confidence:.1%}
+- Severity: {severity.upper()}
+
+[Knowledge Base]
 {knowledge_context}
 
-Severity: {severity.upper()}
-Confidence: {confidence:.1%}
-{retrieved_section}
+[Retrieved Similar Cases]
+{retrieved_context}
 
-Please produce a structured inspection report including:
-1. Executive Summary
-2. Technical Analysis
-3. Root Cause Assessment
-4. Risk Assessment
-5. Corrective Actions
-6. Recommendations
-
-Format as a professional engineering report using markdown."""
+Report requirements:
+- Use markdown.
+- Include Executive Summary, Technical Analysis, Root Cause Assessment, Risk Assessment, Corrective Actions, and Recommendations.
+- Ground claims in the RAG context above.
+- Be concise, technical, and actionable."""
 
         return [
             {"role": "system", "content": system_prompt},
@@ -229,25 +255,11 @@ Format as a professional engineering report using markdown."""
         max_new_tokens: Optional[int] = None,
     ) -> str:
         """
-        Generate an inspection report for a detected defect.
+        Generate an inspection report for a single detected defect.
 
-        Args:
-            defect_name: Detected defect class (e.g., "missing_hole").
-            confidence: Detection confidence score (0-1).
-            knowledge_context: Context from KnowledgeEngine.format_for_rag_prompt().
-            retrieved_cases: Similar historical defects from FAISS search.
-            severity: Severity level string.
-            max_new_tokens: Override for maximum response length.
-
-        Returns:
-            Formatted inspection report as markdown string.
+        max_new_tokens is kept for backward compatibility and maps to the
+        OpenAI-compatible max_tokens request field.
         """
-        # Lazy load model on first call
-        if not self._model_loaded:
-            logger.info("Loading LLM for first time (this may take ~30 seconds)...")
-            self.load_model()
-
-        # Build prompt
         messages = self._build_rag_prompt(
             defect_name=defect_name,
             confidence=confidence,
@@ -255,51 +267,7 @@ Format as a professional engineering report using markdown."""
             retrieved_cases=retrieved_cases,
             severity=severity,
         )
-
-        # Apply chat template
-        text = self.tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
-
-        # Tokenize
-        inputs = self.tokenizer(
-            text,
-            return_tensors="pt",
-            truncation=True,
-            max_length=self.config.get("tokenizer", {}).get("max_input_length", 2048),
-        )
-
-        # Move to model device
-        device = next(self.model.parameters()).device
-        inputs = {k: v.to(device) for k, v in inputs.items()}
-
-        # Generation config
-        gen_config = self.config.get("generation", {})
-        max_tokens = max_new_tokens or gen_config.get("max_new_tokens", 512)
-
-        logger.info(f"Generating report for: {defect_name} (max_tokens={max_tokens})")
-
-        with torch.no_grad():
-            output_ids = self.model.generate(
-                **inputs,
-                max_new_tokens=max_tokens,
-                temperature=gen_config.get("temperature", 0.3),
-                top_p=gen_config.get("top_p", 0.9),
-                top_k=gen_config.get("top_k", 50),
-                repetition_penalty=gen_config.get("repetition_penalty", 1.1),
-                do_sample=gen_config.get("do_sample", True),
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-            )
-
-        # Decode only the new tokens (not the input)
-        new_tokens = output_ids[0][inputs["input_ids"].shape[1]:]
-        report = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
-
-        logger.info(f"Report generated | length={len(report.split())} words")
-        return report.strip()
+        return self._generate_from_messages(messages, max_tokens=max_new_tokens)
 
     def generate_multi_defect_report(
         self,
@@ -307,81 +275,57 @@ Format as a professional engineering report using markdown."""
         knowledge_engine: "KnowledgeEngine",
         retrieved_cases_map: Optional[dict[int, list[dict]]] = None,
     ) -> str:
-        """
-        Generate a consolidated report for multiple detected defects.
-
-        Args:
-            detections: List of detection dicts (with class_name, confidence).
-            knowledge_engine: KnowledgeEngine instance for context.
-            retrieved_cases_map: Dict mapping detection index to retrieved cases.
-
-        Returns:
-            Full multi-defect inspection report.
-        """
-        from knowledge.knowledge_engine import KnowledgeEngine
-
+        """Generate one consolidated report for all detected defects."""
         if not detections:
             return "# PCB Inspection Report\n\n**Result: No defects detected.**\n\nThe PCB passed visual inspection."
 
-        if not self._model_loaded:
-            self.load_model()
-
-        sections = []
-
-        # Header
-        sections.append("# PCB AUTOMATED INSPECTION REPORT")
-        sections.append(f"\n**Total Defects Detected:** {len(detections)}")
-
-        # Severity summary
+        defect_chunks = []
         severity_counts: dict[str, int] = {}
-        for det in detections:
-            sev = knowledge_engine.get_severity(det.get("class_name", ""))
-            severity_counts[sev] = severity_counts.get(sev, 0) + 1
-
-        if "critical" in severity_counts:
-            sections.append(f"\n🔴 **CRITICAL DEFECTS: {severity_counts['critical']}** — IMMEDIATE ACTION REQUIRED")
-        if "high" in severity_counts:
-            sections.append(f"🟠 **HIGH SEVERITY: {severity_counts['high']}** — Engineering review required")
-        if "medium" in severity_counts:
-            sections.append(f"🟡 **MEDIUM SEVERITY: {severity_counts['medium']}** — Risk assessment required")
-        if "low" in severity_counts:
-            sections.append(f"🟢 **LOW SEVERITY: {severity_counts['low']}** — Document and monitor")
-
-        sections.append("\n---\n")
-
-        # Per-defect reports
         for idx, det in enumerate(detections):
             class_name = det.get("class_name", "unknown")
-            confidence = det.get("confidence", 0.0)
+            confidence = float(det.get("confidence", 0.0))
+            bbox = det.get("bbox", [])
             retrieved = (retrieved_cases_map or {}).get(idx, [])
-
+            severity = knowledge_engine.get_severity(class_name)
+            severity_counts[severity] = severity_counts.get(severity, 0) + 1
             knowledge_context = knowledge_engine.format_for_rag_prompt(
                 class_name, confidence, retrieved
             )
-            severity = knowledge_engine.get_severity(class_name)
 
-            sections.append(f"## Defect {idx+1}: {class_name.replace('_', ' ').title()}")
-            sections.append(f"**Confidence:** {confidence:.1%} | **Severity:** {severity.upper()}\n")
-
-            report = self.generate_report(
-                defect_name=class_name,
-                confidence=confidence,
-                knowledge_context=knowledge_context,
-                retrieved_cases=retrieved,
-                severity=severity,
+            defect_chunks.append(
+                f"[Defect {idx + 1}: {class_name}]\n"
+                f"Detection confidence: {confidence:.1%}\n"
+                f"Bounding box: {bbox}\n"
+                f"Severity: {severity.upper()}\n\n"
+                f"Knowledge chunk:\n{knowledge_context}\n\n"
+                f"Retrieved similar cases:\n{self._format_retrieved_cases(retrieved)}"
             )
-            sections.append(report)
-            sections.append("\n---\n")
 
-        # Footer
-        sections.append("*Report generated by PCB-VLM-XAI Automated Inspection System*")
-        sections.append("*Powered by: YOLOv8s + SigLIP + FAISS + LoRA Fine-tuned Qwen2.5*")
+        severity_summary = ", ".join(
+            f"{count} {severity}" for severity, count in sorted(severity_counts.items())
+        )
+        user_message = f"""Generate one professional PCB inspection report for this image.
 
-        return "\n".join(sections)
+RAG_CONTEXT_CHUNKS:
+
+[Inspection Summary]
+- Total defects detected: {len(detections)}
+- Severity summary: {severity_summary}
+
+{chr(10).join(defect_chunks)}
+
+Report requirements:
+- Use markdown.
+- Include Executive Summary, Defect Findings, Root Cause Assessment, Risk Assessment, Corrective Actions, and Recommendations.
+- Consolidate repeated defects instead of repeating identical root-cause text.
+- Ground every technical claim in the detection, retrieval, and knowledge chunks above."""
+
+        messages = [
+            {"role": "system", "content": self.config.get("system_prompt", "You are a PCB inspection expert.")},
+            {"role": "user", "content": user_message},
+        ]
+        return self._generate_from_messages(messages)
 
     def is_loaded(self) -> bool:
-        """Check if model is loaded and ready."""
-        return self._model_loaded
-
-
-from typing import Optional
+        """Check if the API client is initialized and ready."""
+        return self._client_ready

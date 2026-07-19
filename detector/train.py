@@ -7,7 +7,8 @@ PURPOSE:
     visual features, so we only need to adapt it to PCB defects.
 
 INPUT:
-    data/splits/dataset.yaml  (created by prepare_dataset.py)
+    Training config: configs/settings.py (TRAINING_CONFIG)
+    YOLO dataset manifest: data/splits/dataset.yaml (created by prepare_dataset.py)
 
 OUTPUT:
     runs/detect/pcb_defect_detector/
@@ -36,12 +37,14 @@ METRICS TO WATCH:
 
 USAGE:
     python detector/train.py
-    python detector/train.py --config configs/training.yaml --resume
+    python detector/train.py --resume
 """
 
 import argparse
 import shutil
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from typing import Optional
 import yaml
 import torch
@@ -144,7 +147,7 @@ def train_detector(
     if config is None:
         from configs.settings import TRAINING_CONFIG
         config = TRAINING_CONFIG
-    logger.info("Loaded training config from Python settings")
+    logger.info("Loaded training config from configs/settings.py")
 
     # --- Validate prerequisites ---
     dataset_yaml = Path(config["dataset"]["path"])

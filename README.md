@@ -1,239 +1,134 @@
-# PCBVeritas 
+# PCBVeritas
 
-## Explainable Vision-Language PCB Inspection System with Retrieval-Augmented Defect Reasoning
+## Explainable PCB Inspection With Retrieval-Augmented Reports
 
-[![Python 3.10-3.12](https://img.shields.io/badge/Python-3.10--3.12-blue.svg)](https://www.python.org/)
-[![PyTorch 2.2](https://img.shields.io/badge/PyTorch-2.2-red.svg)](https://pytorch.org/)
-[![YOLOv8](https://img.shields.io/badge/YOLOv8-Ultralytics-green.svg)](https://ultralytics.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.33-ff4b4b.svg)](https://streamlit.io/)
+PCBVeritas is an AI-assisted PCB inspection system that combines YOLOv8 object
+detection, Grad-CAM explainability, SigLIP + FAISS visual retrieval, and a
+RAG-based LLM report generator. The LLM is called through the OpenAI Python SDK
+against either a local LM Studio server or the xAI/Grok API.
 
-A production-quality AI system for automated PCB (Printed Circuit Board) defect inspection combining **YOLOv8 object detection**, **Grad-CAM explainability**, **SigLIP + FAISS retrieval**, and **LoRA fine-tuned Qwen2.5** for expert report generation — all running **fully offline** on consumer hardware.
-
----
-
-## Project Objectives
-
-* Detect PCB manufacturing defects with high accuracy.
-* Localize defects using bounding boxes.
-* Provide visual explanations for model predictions.
-* Retrieve visually similar historical defect cases.
-* Generate grounded inspection reports using retrieved evidence and domain knowledge.
-* Explore the integration of object detection, retrieval systems, and language models in an industrial AI workflow.
-
----
-
-## System Architecture
+## Pipeline
 
 ```text
-PCB Image
-    │
-    ▼
-YOLOv8s Detector
-    │
-    ├── Bounding Boxes
-    ├── Class Labels
-    ├── Confidence Scores
-    │
-    ├─────────────┐
-    ▼             ▼
-Grad-CAM       SigLIP
-    │             │
-    ▼             ▼
-Heatmaps      FAISS Retrieval
-                   │
-                   ▼
-            Similar Cases
-                   │
-                   ▼
-           Knowledge Base
-                   │
-                   ▼
-         LoRA-Tuned Qwen2.5
-                   │
-                   ▼
-          Inspection Report
+PCB image
+  -> YOLOv8s detector
+  -> Grad-CAM / EigenCAM visual explanation
+  -> SigLIP crop embeddings
+  -> FAISS similar-case retrieval
+  -> PCB defect knowledge base
+  -> OpenAI-compatible LLM API
+  -> Markdown inspection report
 ```
-
----
 
 ## Defect Classes
 
-The detector identifies six PCB defect categories:
+| Class | Description |
+| --- | --- |
+| Missing Hole | Missing drilled via or through-hole |
+| Mouse Bite | Irregular conductor edge damage |
+| Open Circuit | Broken electrical connection |
+| Short Circuit | Unintended conductive bridge |
+| Spur | Small copper protrusion |
+| Spurious Copper | Unwanted copper deposit |
 
-| Class           | Description                         |
-| --------------- | ----------------------------------- |
-| Missing Hole    | Missing drilled via or through-hole |
-| Mouse Bite      | Irregular conductor edge damage     |
-| Open Circuit    | Broken electrical connection        |
-| Short Circuit   | Unintended conductive bridge        |
-| Spur            | Small copper protrusion             |
-| Spurious Copper | Unwanted copper deposit             |
+## Configuration
 
----
+All project settings are centralized in `configs/settings.py`.
 
-## Dataset Construction
+- `TRAINING_CONFIG`: YOLOv8s detector training settings.
+- `INFERENCE_CONFIG`: detector inference thresholds and output paths.
+- `RETRIEVAL_CONFIG`: SigLIP, FAISS, crop, and retrieval settings.
+- `XAI_CONFIG`: Grad-CAM/EigenCAM settings.
+- `LLM_CONFIG`: provider, API endpoint, model name, secret env var, generation settings, and system prompt.
 
-Two datasets were used during development.
+YOLO still uses `data/splits/dataset.yaml` as the Ultralytics dataset manifest;
+that is dataset metadata, not a project config file.
 
-### Dataset 1: PCB_DATASET
+## Installation and Deployment
 
-https://www.kaggle.com/datasets/akhatova/pcb-defects
+This project uses a single requirements-based workflow. Streamlit Community Cloud
+will install dependencies from `requirements.txt`, so there is no longer any need
+for `environment.yml`.
 
-* Pascal VOC XML annotations
-* Images stored in class-specific folders
-* Original rotation-based augmentations were intentionally ignored
-* Converted into YOLO format using:
+### Local development
 
-```text
-data/raw/prepare_pcb_dataset_split.py
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
 ```
 
-This script:
+### Local RTX 4050 note
 
-* Parses Pascal VOC XML annotations
-* Converts annotations to YOLO format
-* Creates train/validation/test splits
-* Generates:
+The default requirements install CPU-friendly PyTorch wheels, which keep the
+retrieval and embedding stack off the GPU. If you want GPU acceleration for the
+YOLO detector locally, install the CUDA-enabled wheels manually after the base
+requirements install:
 
-```text
-data/raw/PCB_DATASET_SPLIT
+```bash
+python -m pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 \
+  --index-url https://download.pytorch.org/whl/cu118
 ```
 
-### Dataset 2: pcb-defect-dataset
+### Streamlit Community Cloud
 
-https://www.kaggle.com/datasets/norbertelter/pcb-defect-dataset
+- Keep `requirements.txt` in the repository root.
+- Do not add `environment.yml`.
+- Set the LLM API key as a secret in the hosting platform (for example
+  `GROQ_API_KEY` or `XAI_API_KEY`).
 
-* Native YOLO-format dataset
-* Used directly without annotation conversion
+## LLM Setup
 
-### Dataset Merge
+Copy `.env.example` to `.env` for local development and set the secret needed by
+the provider selected in `LLM_CONFIG`.
 
-The two datasets were merged using:
-
-```text
-data/raw/merge_pcb_yolo_datasets.py
+```bash
+XAI_API_KEY=
+LM_STUDIO_API_KEY=lm-studio
 ```
 
-This script:
+`.env` is ignored by Git. For GitHub or cloud deployments, set the same
+environment variable in the hosting platform's secret manager.
 
-* Merges both datasets
-* Automatically remaps class IDs using class names
-* Preserves a unified label schema
-* Generates:
+Default LLM provider:
 
-```text
-data/splits
+```python
+LLM_CONFIG["provider"] = "lm_studio"
 ```
 
-Final dataset statistics:
+To use Grok instead, change the provider and ensure `XAI_API_KEY` is available:
 
-| Split      | Images |
-| ---------- | ------ |
-| Train      | 9,088  |
-| Validation | 1,135  |
-| Test       | 1,138  |
+```python
+LLM_CONFIG["provider"] = "grok"
+```
 
-The merged dataset contains approximately 11,361 PCB images.
+## Common Commands
 
----
-
-## Object Detection
-
-The object detection component uses YOLOv8s.
-
-Training configuration:
-
-* Framework: Ultralytics YOLOv8
-* Model: YOLOv8s
-* Epochs: 100
-* Dataset: Merged PCB dataset
-* Input format: Bounding-box detection
-
-Training runtime on RTX 4050:
-
-* Average epoch time: ~2 minutes 40 seconds
-* Total training time: ~4.5 hours
-
-YOLOv8 built-in augmentation was used during training. Pre-generated rotation images from the original dataset were excluded.
-
----
-
-## Explainability
-
-To improve transparency, Grad-CAM visualizations are generated for detected defects.
-
-The explainability module highlights image regions that contributed most strongly to detector predictions and provides a visual inspection aid for model validation.
-
----
-
-## Retrieval-Augmented Defect Reasoning
-
-Visual retrieval is performed using:
-
-* SigLIP image embeddings
-* FAISS similarity search
-
-For every detected defect:
-
-1. SigLIP generates an image embedding.
-2. FAISS retrieves similar historical examples.
-3. Retrieved examples are passed into the report-generation pipeline.
-
-This grounds generated reports using previously observed defect cases.
-
----
-
-## Report Generation
-
-Inspection reports are generated using:
-
-* Qwen2.5-1.5B-Instruct
-* LoRA fine-tuning
-* Structured defect knowledge base
-
-The language model does not perform defect detection.
-
-Its role is to synthesize:
-
-* Detector outputs
-* Retrieved defect examples
-* Domain knowledge
-
-into a human-readable inspection report.
-
----
+```bash
+python scripts/prepare_dataset.py
+python detector/train.py
+python retrieval/build_index.py
+streamlit run app/app.py
+```
 
 ## Technology Stack
 
-| Component         | Technology   |
-| ----------------- | ------------ |
-| Object Detection  | YOLOv8s      |
-| Explainability    | Grad-CAM     |
-| Visual Embeddings | SigLIP       |
-| Retrieval         | FAISS        |
-| Language Model    | Qwen2.5-1.5B |
-| Fine-Tuning       | LoRA (PEFT)  |
-| Framework         | PyTorch      |
-| Interface         | Streamlit    |
+| Component | Technology |
+| --- | --- |
+| Object Detection | YOLOv8s |
+| Explainability | Grad-CAM / EigenCAM |
+| Visual Embeddings | SigLIP |
+| Retrieval | FAISS |
+| Report Generation | RAG + OpenAI-compatible LLM API |
+| Interface | Streamlit |
 
----
+## Notes
 
-## Repository Structure
-
-```text
-PCBVeritas/
-├── detector/
-├── retrieval/
-├── xai/
-├── knowledge/
-├── llm/
-├── pipeline/
-├── app/
-├── data/
-├── configs/
-├── docs/
-└── tests/
-```
-
-Detailed implementation notes, setup instructions, and training procedures are documented in the `docs/` directory.
+- Fine-tuning code and synthetic fine-tuning data are intentionally removed.
+- RAG remains active: detector outputs, retrieved similar cases, and the PCB
+  knowledge base are passed to the configured LLM API as prompt context.
+- `retrieval/build_index.py` remains the index build entrypoint.
+- YOLO inference is allowed to use the GPU locally when available, but the
+  retrieval pipeline, SigLIP embeddings, and supporting components default to
+  CPU so you keep as much VRAM as possible free for LM Studio.

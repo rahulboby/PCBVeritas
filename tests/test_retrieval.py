@@ -56,13 +56,8 @@ class TestFAISSSearchEngine:
             },
             "retrieval": {"top_k": 3, "min_similarity": 0.0},
         }
-        config_path = tmp_path / "retrieval.yaml"
-        import yaml
-        with open(config_path, "w") as f:
-            yaml.dump(config, f)
-
         from retrieval.faiss_search import FAISSSearchEngine
-        engine = FAISSSearchEngine(config_path=str(config_path))
+        engine = FAISSSearchEngine(config=config)
         engine.load()
         return engine, embeddings
 
@@ -119,13 +114,8 @@ class TestFAISSSearchEngine:
             },
             "retrieval": {"top_k": 3, "min_similarity": 0.0},
         }
-        config_path = tmp_path / "retrieval.yaml"
-        import yaml
-        with open(config_path, "w") as f:
-            yaml.dump(config, f)
-
         from retrieval.faiss_search import FAISSSearchEngine
-        engine = FAISSSearchEngine(config_path=str(config_path))
+        engine = FAISSSearchEngine(config=config)
         query = np.random.rand(768).astype(np.float32)
         with pytest.raises(RuntimeError):
             engine.search(query)
@@ -139,13 +129,8 @@ class TestFAISSSearchEngine:
             },
             "retrieval": {"top_k": 3, "min_similarity": 0.0},
         }
-        config_path = tmp_path / "retrieval.yaml"
-        import yaml
-        with open(config_path, "w") as f:
-            yaml.dump(config, f)
-
         from retrieval.faiss_search import FAISSSearchEngine
-        engine = FAISSSearchEngine(config_path=str(config_path))
+        engine = FAISSSearchEngine(config=config)
         assert not engine.is_loaded()
 
 

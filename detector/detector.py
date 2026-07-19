@@ -52,7 +52,6 @@ from typing import Optional, Union
 import numpy as np
 import cv2
 import torch
-import yaml
 from loguru import logger
 from ultralytics import YOLO
 
@@ -132,15 +131,27 @@ class PCBDefectDetector:
         self.weights_path = Path(weights_path)
         self.config = config or {}
         
-        # Determine device
+        # Determine device.
+        # YOLO inference uses GPU locally when available; otherwise it falls back
+        # to CPU. Retrieval and embedding components remain CPU-only by default.
         if device is not None:
             self.device = device
-        elif torch.cuda.is_available():
-            self.device = "0"  # First GPU
-            logger.info(f"GPU detected: {torch.cuda.get_device_name(0)}")
         else:
-            self.device = "cpu"
-            logger.warning("No GPU detected. Running on CPU (slower).")
+            configured_device = self.config.get("model", {}).get("device", "0")
+            if configured_device in {None, "", "auto"}:
+                configured_device = "0"
+
+            if configured_device == "cpu":
+                self.device = "cpu"
+            elif configured_device == "cuda" and torch.cuda.is_available():
+                self.device = "0"
+                logger.info(f"GPU detected: {torch.cuda.get_device_name(0)}")
+            elif configured_device == "0" and torch.cuda.is_available():
+                self.device = "0"
+                logger.info(f"GPU detected: {torch.cuda.get_device_name(0)}")
+            else:
+                self.device = "cpu"
+                logger.warning("No GPU detected. Running YOLO on CPU (slower).")
 
         # Confidence and IoU thresholds from config
         self.conf_threshold = self.config.get("detection", {}).get("conf_threshold", 0.35)
@@ -181,6 +192,24 @@ class PCBDefectDetector:
         model = YOLO(str(self.weights_path))
         
         return model
+
+    def warmup(self) -> None:
+        """Run a tiny prediction so CUDA kernels are initialized before upload."""
+        if getattr(self, "_warmed_up", False):
+            return
+
+        dummy = np.zeros((self.img_size, self.img_size, 3), dtype=np.uint8)
+        self.model.predict(
+            source=dummy,
+            conf=self.conf_threshold,
+            iou=self.iou_threshold,
+            max_det=1,
+            imgsz=self.img_size,
+            device=self.device,
+            verbose=False,
+        )
+        self._warmed_up = True
+        logger.info("YOLO detector warmup complete")
 
     def detect(
         self,
