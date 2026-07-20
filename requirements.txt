@@ -9,13 +9,12 @@ setuptools>=68.2.2
 wheel>=0.42.0
 
 # --- Core scientific stack ---
-numpy==1.26.4
-pandas==2.2.2
+numpy
+pandas
 scipy==1.13.0
-scikit-learn==1.4.2
+scikit-learn
 
 # --- Image processing ---
-opencv-python-headless==4.9.0.80
 Pillow==10.3.0
 matplotlib==3.8.4
 seaborn==0.13.2
@@ -24,8 +23,7 @@ seaborn==0.13.2
 # Default install is CPU-friendly and works for Streamlit Cloud.
 # For a local RTX 4050, install CUDA-enabled PyTorch manually after creating
 # your venv, for example:
-#   python -m pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 \
-#       --index-url https://download.pytorch.org/whl/cu118
+#   python -m pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cu118
 torch==2.2.2
 torchvision==0.17.2
 torchaudio==2.2.2
@@ -33,6 +31,9 @@ torchaudio==2.2.2
 # --- Object detection / XAI ---
 ultralytics==8.2.18
 grad-cam==1.5.0
+# Keep OpenCV headless active for Streamlit/Cloud deployments.
+# Install this after grad-cam/Ultralytics so it becomes the active cv2 runtime.
+opencv-python-headless
 
 # --- Vision-language embeddings ---
 transformers==4.40.2
@@ -41,10 +42,10 @@ transformers==4.40.2
 openai>=1.40.0
 
 # --- Vector search ---
-faiss-cpu==1.8.0
+faiss-cpu
 
 # --- Streamlit app ---
-streamlit==1.33.0
+streamlit
 streamlit-image-coordinates==0.1.6
 plotly==5.22.0
 

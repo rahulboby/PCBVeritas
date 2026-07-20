@@ -56,6 +56,11 @@ python3 -m pip install --upgrade "pip>=24.0" "setuptools>=68.2.2" "wheel>=0.42.0
 echo -e "${YELLOW}[5/7] Installing project requirements...${NC}"
 python3 -m pip install -r requirements.txt
 
+# --- Ensure headless OpenCV is the active runtime ---
+echo -e "${YELLOW}[5b/7] Ensuring OpenCV headless is active...${NC}"
+python3 -m pip uninstall -y opencv-python >/dev/null 2>&1 || true
+python3 -m pip install --force-reinstall --no-deps opencv-python-headless==4.13.0.92
+
 # --- Optional local GPU note ---
 echo -e "${YELLOW}[6/7] Optional: install CUDA-enabled PyTorch locally for RTX 4050...${NC}"
 echo -e "${BLUE}If you want GPU acceleration for YOLO on a local NVIDIA card, run:${NC}"
