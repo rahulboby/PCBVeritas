@@ -61,6 +61,11 @@ import numpy as np
 import torch
 from loguru import logger
 
+
+class _GradCAMFallbackError(RuntimeError):
+    """Raised when the standard Grad-CAM path cannot produce a heatmap."""
+
+
 # pytorch-grad-cam library
 try:
     from pytorch_grad_cam import GradCAM, EigenCAM, GradCAMPlusPlus
@@ -171,7 +176,10 @@ class PCBGradCAM:
         # Get the target layer from YOLOv8's backbone
         # model.model[-2] is typically the SPPF layer (Spatial Pyramid Pooling Fast)
         # which aggregates multi-scale features - good for CAM
-        self.target_layer = self._get_target_layer()
+        try:
+            self.target_layer = self._get_target_layer()
+        except RuntimeError:
+            self.target_layer = []
         
         logger.info(
             f"PCBGradCAM initialized | "
@@ -195,15 +203,19 @@ class PCBGradCAM:
         """
         try:
             pytorch_model = self.yolo_model.model
+            if getattr(pytorch_model, "model", None) is None:
+                raise AttributeError("YOLO model does not expose a .model attribute")
             # model.model is the sequential module
             # Access second-to-last layer of the model backbone
             target = pytorch_model.model[-2]
             return [target]
-        except (AttributeError, IndexError) as e:
+        except (AttributeError, IndexError, TypeError) as e:
             logger.warning(f"Could not access target layer: {e}. Trying fallback.")
             try:
                 # Fallback: try to find a convolutional layer
                 pytorch_model = self.yolo_model.model
+                if getattr(pytorch_model, "model", None) is None:
+                    raise AttributeError("YOLO model does not expose a .model attribute")
                 layers = list(pytorch_model.model.children())
                 return [layers[-3]]  # Try third from last
             except Exception as e2:
@@ -300,6 +312,13 @@ class PCBGradCAM:
 
             # Resize heatmap back to original image size
             heatmap_resized = cv2.resize(heatmap, (w, h))
+            if heatmap_resized.max() <= 1e-6:
+                logger.warning("Standard CAM produced an empty heatmap; using fallback activation map")
+                heatmap_resized = self._manual_gradcam(
+                    image_tensor=image_tensor,
+                    target_class=tc,
+                    image_shape=(h, w),
+                )
 
             # --- Create color overlay ---
             # show_cam_on_image expects RGB float [0,1] image and heatmap [0,1]
@@ -327,10 +346,87 @@ class PCBGradCAM:
             return heatmap_resized, overlay_bgr
 
         except Exception as e:
-            logger.error(f"CAM generation failed: {e}")
-            # Return empty heatmap on failure
-            empty_heatmap = np.zeros((h, w), dtype=np.float32)
-            return empty_heatmap, image.copy()
+            logger.warning(f"Standard CAM generation failed: {e}; using fallback activation map")
+            try:
+                heatmap = self._manual_gradcam(
+                    image_tensor=image_tensor,
+                    target_class=tc,
+                    image_shape=(h, w),
+                )
+                overlay = self._overlay_from_heatmap(image, heatmap=heatmap, image_shape=(h, w))
+                return heatmap, overlay
+            except _GradCAMFallbackError as fallback_error:
+                logger.error(f"CAM fallback failed: {fallback_error}")
+                empty_heatmap = np.zeros((h, w), dtype=np.float32)
+                return empty_heatmap, image.copy()
+
+    def _manual_gradcam(
+        self,
+        image_tensor: torch.Tensor,
+        target_class: int,
+        image_shape: tuple[int, int],
+    ) -> np.ndarray:
+        """Generate a simple Grad-CAM-like heatmap directly from YOLOv8 features."""
+        model = self.yolo_model.model
+        model.eval()
+        feature_module = getattr(model, "model", model)
+
+        try:
+            feat_maps = []
+
+            def _capture(module: torch.nn.Module, inputs: tuple[torch.Tensor, ...], output: torch.Tensor) -> None:
+                feat_maps.append(output)
+
+            conv_modules = [module for _, module in feature_module.named_modules() if isinstance(module, torch.nn.Conv2d)]
+            if not conv_modules:
+                raise _GradCAMFallbackError("No convolutional layers available for manual Grad-CAM")
+
+            target_module = conv_modules[-1]
+            handle = target_module.register_forward_hook(_capture)
+
+            with torch.no_grad():
+                model(image_tensor)
+
+            handle.remove()
+
+            if not feat_maps:
+                raise _GradCAMFallbackError("No feature maps available for manual Grad-CAM")
+
+            feature_map = feat_maps[-1].squeeze(0).mean(dim=0).detach().cpu().numpy()
+            if feature_map.ndim == 3:
+                feature_map = feature_map.mean(axis=0)
+            feature_map = np.abs(feature_map)
+            feature_map = np.maximum(feature_map, 0)
+            if feature_map.max() > 0:
+                feature_map = feature_map / feature_map.max()
+            else:
+                feature_map = np.ones_like(feature_map, dtype=np.float32) * 0.5
+
+            h, w = image_shape
+            heatmap = cv2.resize(feature_map, (w, h))
+            return heatmap.astype(np.float32)
+        except Exception as exc:
+            raise _GradCAMFallbackError(str(exc)) from exc
+
+    def _overlay_from_heatmap(
+        self,
+        image: np.ndarray,
+        heatmap: Optional[np.ndarray],
+        image_shape: tuple[int, int],
+    ) -> np.ndarray:
+        """Create a jet-colored overlay from a heatmap."""
+        if heatmap is None:
+            heatmap = np.zeros(image_shape, dtype=np.float32)
+        heatmap_resized = cv2.resize(heatmap, (image_shape[1], image_shape[0]))
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+        overlay_rgb = show_cam_on_image(
+            image_rgb,
+            heatmap_resized,
+            use_rgb=True,
+            colormap=cv2.COLORMAP_JET,
+            image_weight=self.config.get("visualization", {}).get("alpha", 0.5),
+        )
+        return cv2.cvtColor(overlay_rgb, cv2.COLOR_RGB2BGR)
 
     def generate_comparison(
         self,

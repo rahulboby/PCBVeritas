@@ -245,7 +245,7 @@ LLM_CONFIG = {
     # Change this value to switch report generation between LM Studio and a
     # cloud provider such as Groq or xAI/Grok. All providers expose an
     # OpenAI-compatible endpoint.
-    "provider": "lm_studio",
+    "provider": "groq",
     "providers": {
         "lm_studio": {
             "base_url": "http://localhost:1234/v1",

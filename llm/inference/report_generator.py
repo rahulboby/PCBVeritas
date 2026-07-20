@@ -41,7 +41,7 @@ class PCBReportGenerator:
         self.provider_name = (
             self.config.get("provider")
             or os.getenv("PCB_LLM_PROVIDER")
-            or "lm_studio"
+            or "groq"
         )
         self.provider_config = self._resolve_provider_config()
         self.model_name = self.provider_config.get("model", "local-model")

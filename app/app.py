@@ -22,7 +22,6 @@ import streamlit as st
 import numpy as np
 import cv2
 from PIL import Image
-from loguru import logger
 
 # ============================================================
 # PyTorch 2.6 weights_only workaround
