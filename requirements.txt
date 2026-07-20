@@ -5,7 +5,8 @@
 # ============================================================
 
 # --- Packaging bootstrap ---
-setuptools>=68.2.2
+# setuptools>=68.2.2
+setuptools<82.0.0
 wheel>=0.42.0
 
 # --- Core scientific stack ---
