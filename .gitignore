@@ -34,8 +34,7 @@ mlruns/
 wandb/
 
 # Model/export/checkpoint files
-*.pt
-*.pth
+
 *.onnx
 *.engine
 *.safetensors
