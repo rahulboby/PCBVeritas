@@ -28,7 +28,7 @@ htmlcov/
 data/
 logs/
 outputs/
-models/
+models/embeddings
 runs/
 mlruns/
 wandb/
